@@ -1,0 +1,804 @@
+{
+  "edges": [
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['risk-431']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e1",
+      "source_ref": {
+        "record_id": "e1",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "B",
+      "target_event_id": "e2",
+      "target_ref": {
+        "record_id": "e2",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e1",
+      "source_ref": {
+        "record_id": "e1",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "A",
+      "target_event_id": "e3",
+      "target_ref": {
+        "record_id": "e3",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.6499
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['risk-431']"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e2",
+      "source_ref": {
+        "record_id": "e2",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "A",
+      "target_event_id": "e3",
+      "target_ref": {
+        "record_id": "e3",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['risk-431']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e3",
+      "source_ref": {
+        "record_id": "e3",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "B",
+      "target_event_id": "e4",
+      "target_ref": {
+        "record_id": "e4",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e2",
+      "source_ref": {
+        "record_id": "e2",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e4",
+      "target_ref": {
+        "record_id": "e4",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.6499
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['risk-431']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e1",
+      "source_ref": {
+        "record_id": "e1",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "B",
+      "target_event_id": "e4",
+      "target_ref": {
+        "record_id": "e4",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 3.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['shock-29']"
+      ],
+      "source_agent_id": "ENV",
+      "source_event_id": "e5",
+      "source_ref": {
+        "record_id": "e5",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "A",
+      "target_event_id": "e6",
+      "target_ref": {
+        "record_id": "e6",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['shock-29']"
+      ],
+      "source_agent_id": "ENV",
+      "source_event_id": "e5",
+      "source_ref": {
+        "record_id": "e5",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "B",
+      "target_event_id": "e7",
+      "target_ref": {
+        "record_id": "e7",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e8",
+      "source_ref": {
+        "record_id": "e8",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "A",
+      "target_event_id": "e9",
+      "target_ref": {
+        "record_id": "e9",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.6499
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['cks-61750']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e8",
+      "source_ref": {
+        "record_id": "e8",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "B",
+      "target_event_id": "e10",
+      "target_ref": {
+        "record_id": "e10",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['cks-61750']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e9",
+      "source_ref": {
+        "record_id": "e9",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e10",
+      "target_ref": {
+        "record_id": "e10",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "artifact overlap: ['/shared/id.txt', 'rid-1791']",
+        "value reuse: ['rid-1791']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e11",
+      "source_ref": {
+        "record_id": "e11",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "artifact-mediated",
+      "target_agent_id": "B",
+      "target_event_id": "e12",
+      "target_ref": {
+        "record_id": "e12",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.9
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e12",
+      "source_ref": {
+        "record_id": "e12",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e13",
+      "target_ref": {
+        "record_id": "e13",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.6499
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "artifact overlap: ['rid-1791']",
+        "value reuse: ['rid-1791']"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e11",
+      "source_ref": {
+        "record_id": "e11",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "artifact-mediated",
+      "target_agent_id": "B",
+      "target_event_id": "e13",
+      "target_ref": {
+        "record_id": "e13",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.9
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['err=8']"
+      ],
+      "source_agent_id": "C",
+      "source_event_id": "e15",
+      "source_ref": {
+        "record_id": "e15",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "A",
+      "target_event_id": "e16",
+      "target_ref": {
+        "record_id": "e16",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['lat=109ms']"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e14",
+      "source_ref": {
+        "record_id": "e14",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "A",
+      "target_event_id": "e16",
+      "target_ref": {
+        "record_id": "e16",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['port=9010']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e18",
+      "source_ref": {
+        "record_id": "e18",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e19",
+      "target_ref": {
+        "record_id": "e19",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e21",
+      "source_ref": {
+        "record_id": "e21",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e22",
+      "target_ref": {
+        "record_id": "e22",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 13.0,
+      "weight": 0.6493
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['key-696']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e20",
+      "source_ref": {
+        "record_id": "e20",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e23",
+      "target_ref": {
+        "record_id": "e23",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 29.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e22",
+      "source_ref": {
+        "record_id": "e22",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e23",
+      "target_ref": {
+        "record_id": "e23",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 15.0,
+      "weight": 0.6492
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e21",
+      "source_ref": {
+        "record_id": "e21",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e23",
+      "target_ref": {
+        "record_id": "e23",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 28.0,
+      "weight": 0.6484
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['token-1950']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e24",
+      "source_ref": {
+        "record_id": "e24",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e25",
+      "target_ref": {
+        "record_id": "e25",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal",
+        "task-parallel similar action"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['token-1950']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e24",
+      "source_ref": {
+        "record_id": "e24",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e26",
+      "target_ref": {
+        "record_id": "e26",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "same-agent continuity"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e25",
+      "source_ref": {
+        "record_id": "e25",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "contextual",
+      "target_agent_id": "B",
+      "target_event_id": "e26",
+      "target_ref": {
+        "record_id": "e26",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.6499
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['token-1950']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e26",
+      "source_ref": {
+        "record_id": "e26",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "C",
+      "target_event_id": "e27",
+      "target_ref": {
+        "record_id": "e27",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['token-1950']"
+      ],
+      "source_agent_id": "B",
+      "source_event_id": "e25",
+      "source_ref": {
+        "record_id": "e25",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "C",
+      "target_event_id": "e27",
+      "target_ref": {
+        "record_id": "e27",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.88
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['token-1950']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e24",
+      "source_ref": {
+        "record_id": "e24",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "C",
+      "target_event_id": "e27",
+      "target_ref": {
+        "record_id": "e27",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 3.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['mix-619']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e31",
+      "source_ref": {
+        "record_id": "e31",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "B",
+      "target_event_id": "e32",
+      "target_ref": {
+        "record_id": "e32",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 1.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [
+        "shared task/goal"
+      ],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['mix-619']",
+        "message content appears in target action"
+      ],
+      "source_agent_id": "A",
+      "source_event_id": "e31",
+      "source_ref": {
+        "record_id": "e31",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "direct",
+      "target_agent_id": "C",
+      "target_event_id": "e33",
+      "target_ref": {
+        "record_id": "e33",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 2.0,
+      "weight": 0.95
+    },
+    {
+      "alternative_explanations": [],
+      "edge_origin": "inferred_support",
+      "evidence": [
+        "value reuse: ['reg=mix-619']"
+      ],
+      "source_agent_id": "ENV",
+      "source_event_id": "e30",
+      "source_ref": {
+        "record_id": "e30",
+        "table": "synthetic"
+      },
+      "support_probability": null,
+      "support_type": "information-content",
+      "target_agent_id": "C",
+      "target_event_id": "e33",
+      "target_ref": {
+        "record_id": "e33",
+        "table": "synthetic"
+      },
+      "time_lag_seconds": 3.0,
+      "weight": 0.88
+    }
+  ],
+  "nodes": [
+    "e1",
+    "e2",
+    "e3",
+    "e4",
+    "e5",
+    "e6",
+    "e7",
+    "e8",
+    "e9",
+    "e10",
+    "e11",
+    "e12",
+    "e13",
+    "e14",
+    "e15",
+    "e16",
+    "e17",
+    "e18",
+    "e19",
+    "e20",
+    "e21",
+    "e22",
+    "e23",
+    "e24",
+    "e25",
+    "e26",
+    "e27",
+    "e28",
+    "e29",
+    "e30",
+    "e31",
+    "e32",
+    "e33"
+  ]
+}

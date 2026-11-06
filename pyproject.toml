@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tide"
+version = "0.1.0"
+description = "Temporal Inference of Dependencies in Agent Swarms research prototype"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "TIDE Hackathon Prototype" }]
+dependencies = []
+
+[tool.setuptools]
+packages = ["tide"]

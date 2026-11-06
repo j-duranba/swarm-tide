@@ -1,0 +1,105 @@
+{
+  "eval_seeds": [
+    101,
+    103,
+    107
+  ],
+  "heldout_results": {
+    "baseline_t05": {
+      "broker_detect_rate": 1.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7864425264874656,
+      "event_f1": 0.631578947368421,
+      "event_precision": 0.47619047619047616,
+      "event_recall": 0.9375,
+      "fpr_independent": 0.5588235294117647,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "baseline_t07": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7864425264874656,
+      "event_f1": 0.7384615384615384,
+      "event_precision": 0.7272727272727273,
+      "event_recall": 0.75,
+      "fpr_independent": 0.058823529411764705,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "context_aware_abstain": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7011361116210122,
+      "event_f1": 0.5555555555555556,
+      "event_precision": 0.5,
+      "event_recall": 0.625,
+      "fpr_independent": 0.2647058823529412,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "strict_cross_agent": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7011361116210122,
+      "event_f1": 0.5555555555555556,
+      "event_precision": 0.5,
+      "event_recall": 0.625,
+      "fpr_independent": 0.2647058823529412,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    }
+  },
+  "runs_per_seed": 3,
+  "train_results": {
+    "baseline_t05": {
+      "broker_detect_rate": 1.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7864425264874656,
+      "event_f1": 0.631578947368421,
+      "event_precision": 0.47619047619047616,
+      "event_recall": 0.9375,
+      "fpr_independent": 0.5588235294117647,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "baseline_t07": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7864425264874656,
+      "event_f1": 0.7384615384615384,
+      "event_precision": 0.7272727272727273,
+      "event_recall": 0.75,
+      "fpr_independent": 0.058823529411764705,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "context_aware_abstain": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7011361116210122,
+      "event_f1": 0.5555555555555556,
+      "event_precision": 0.5,
+      "event_recall": 0.625,
+      "fpr_independent": 0.2647058823529412,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    },
+    "strict_cross_agent": {
+      "broker_detect_rate": 0.0,
+      "delayed_detect_rate": 1.0,
+      "event_auprc": 0.7011361116210122,
+      "event_f1": 0.5555555555555556,
+      "event_precision": 0.5,
+      "event_recall": 0.625,
+      "fpr_independent": 0.2647058823529412,
+      "fpr_shared_external_non_env": 0.0,
+      "indirect_direct_error_rate": 0.0
+    }
+  },
+  "train_seeds": [
+    7,
+    13,
+    29
+  ]
+}

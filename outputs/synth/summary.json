@@ -1,0 +1,33 @@
+{
+  "event_count": 33,
+  "inferred_graph_edges": 30,
+  "mode": "synthetic",
+  "notes": [
+    "Synthetic results are for controlled validation only.",
+    "Support scores are not calibrated probabilities.",
+    "Graph edges are inferred support/dependency, not proven causation."
+  ],
+  "output_dir": "outputs/synth",
+  "retrieval_pair_count": 41,
+  "support_pair_count": 41,
+  "support_summary": {
+    "abstentions": 2,
+    "by_support_type": {
+      "artifact-mediated": 2,
+      "contextual": 8,
+      "direct": 9,
+      "independent": 9,
+      "information-content": 11,
+      "none": 2
+    },
+    "total_scored_pairs": 41
+  },
+  "synthetic_metadata": {
+    "event_count": 33,
+    "ground_truth_direct_edges": 17,
+    "notes": "Synthetic data only. Ground truth used for evaluation only.",
+    "run_id": 0,
+    "scenario_count": 10,
+    "seed": 7
+  }
+}
