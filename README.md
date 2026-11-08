@@ -137,33 +137,114 @@ dataset check. The initial dataset remains unchanged.
 ## Pass 2: temporal retrieval and reranking
 
 Pass 2 reads the processed event slice and Pass 1 annotations without changing
-either input. It creates separate query/document embeddings with
-`jinaai/jina-embeddings-v5-text-nano` and retrieval prompts, then combines
-12-hour same-agent message history, annotated information sources, incoming
-messages and dense semantic retrieval. Same-agent history is the explicit
-exception to the cross-source same-agent exclusion. Each candidate set is
-reranked against the full private content and available thinking/reasoning by
-DeepSeek; retrieval similarity is retained separately from dependency scores.
-Source A/B/C refer to the candidate-generation procedure: A's same-agent
-messages are retained, while B-D exclude the target author. Events tied with the
-target timestamp are not retrieved. The model license is CC BY-NC 4.0; check
-usage rights and data-handling requirements before downloading or transmitting
-private traces.
+either input. For each non-`CONSOLIDATE` event, it builds a private
+representation from the agent's active goal, original event message/content,
+and available thinking/reasoning trace. The anonymized Pass 1 summary is not
+used. Pass 1 `from_agent`/`to_agent` values are used locally only for candidate
+selection; the reference values are not included in embedding text or the
+DeepSeek request. Pass 1 annotations also identify target events that were
+successfully annotated.
 
-Install the optional local embedding dependencies, then run a small pilot:
+Pass 2 creates separate query/document embeddings with
+`jinaai/jina-embeddings-v5-text-nano` and retrieval prompts, then combines up to
+three recent same-agent messages, five messages from annotated information
+sources, five messages annotated as incoming to the target author, and ten
+semantically similar prior events from other agents within 12 hours. Candidates
+are deduplicated; timestamps must be strictly earlier than the target. DeepSeek
+assesses the full representations and goal context; retrieval similarity and
+the local retrieval-source labels are stored separately from dependency scores.
+Consolidation events are excluded from targets, embeddings, and candidate
+history. The model license is CC BY-NC 4.0; check usage rights and data-handling
+requirements before downloading or transmitting private traces.
+
+Install the optional local embedding dependencies. To cache and run each stage
+independently, use the same output directory for all three commands:
 
 ```powershell
 uv sync --extra pass2
-uv run --env-file .env python -m tide.cli pass2 --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-deepseek --limit 3
+uv run python -m tide.cli pass2-embed --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --output-dir outputs/pass2-deepseek
+uv run python -m tide.cli pass2-retrieve --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-deepseek
+uv run --env-file .env python -m tide.cli pass2-rerank --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --output-dir outputs/pass2-deepseek --timeout 240 --retries 5 --concurrency 4 --candidate-group-size 4
+```
+
+The stages cache `event_embeddings.jsonl`, `retrieval_candidates.jsonl`, and
+`dependencies.jsonl`, respectively, with separate checkpoints, errors, and
+configuration fingerprints. Repeat a stage command to resume it. Retrieval
+requires a complete embedding cache; reranking requires the retrieval cache.
+You can instead run `pass2` once to execute all three stages in order using
+these same caches. Use `--limit N` on `pass2-retrieve` to cache candidates for
+only the first N annotated targets. If you change an upstream stage's inputs or
+settings, rerun that stage with `--overwrite`, then rerun each downstream stage
+with `--overwrite` so it consumes the refreshed cache.
+
+Embedding precision defaults to `auto`: FP16 on CUDA and FP32 on CPU. Use
+`--precision float32` to compare against full precision, or `--precision
+float16` to require CUDA FP16 explicitly. Precision is recorded in the embedding
+cache configuration; changing it requires `--overwrite`. To restart a partial
+embedding run under CUDA FP16, for example:
+
+```powershell
+uv run python -m tide.cli pass2-embed --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --output-dir outputs/pass2-deepseek --batch-size 32 --precision auto --overwrite
 ```
 
 The default embedding revision is pinned to a Hugging Face commit; use
 `--embedding-revision` only when intentionally changing model revisions.
-`event_embeddings.jsonl`, `dependencies.jsonl`, append-only embedding
-and reranking checkpoints, `pass2_errors.jsonl`, and `pass2_config.json` are
-written only under the Pass 2 output directory. Repeating the same command
-resumes missing work; changed inputs or settings require a new output directory,
-or `--overwrite` to start fresh. The API key uses `ADAPTION_API_KEY` by default.
+All artifacts are written only under the Pass 2 output directory. The API key
+is needed only for reranking and uses `ADAPTION_API_KEY` by default.
+Reranking concurrency defaults to one request; increase `--concurrency` only
+within your provider's rate and concurrency limits. It can be adjusted when
+resuming without invalidating the reranking cache. Each target is checkpointed
+as it completes, and final dependencies are ordered by source event.
+Use `--limit N` on either rerank command to process only the first N cached
+targets in chronological order. Existing checkpointed targets are reused, even
+when they are outside that limit; the dependencies output retains all completed
+targets. Changing the limit does not require `--overwrite`.
+By default, each target's candidates are sent in groups of four, with the target
+included in each request; group scores are merged into one target result. Change
+`--candidate-group-size` to tune prompt sizes. Changing it requires reranking
+with `--overwrite`; this resets only rerank outputs and keeps the embedding and
+retrieval caches.
+
+Reranking also accepts `--candidate-filter proposed`. It filters, but does not
+rewrite, the cached retrieval candidate lists: keep the same-agent history,
+latest cached candidate per `from_agent` author, cached incoming messages after
+the latest same-agent action, then up to five top semantic candidates not
+already selected. The rerank summary reports candidate counts before and after
+filtering. Switching filters requires reranking with `--overwrite`; the cached
+`retrieval_candidates.jsonl` remains unchanged.
+
+### Public-context experiment
+
+The public-context stages use only the Pass 1 `summary` for event text. They do
+not read agent goals, original event content, model output/thinking, or Pass 1
+`from_agent`/`to_agent` values. Because those references are private, public
+retrieval omits the identified-source and incoming-communication candidate
+pools; it retains same-agent history and dense semantic candidates, the same
+12-hour strict-previous-event window, deduplication, and scoring. This is the
+necessary candidate-generation difference between the private and public
+experiments.
+
+Run the public stages into a separate directory; these commands do not touch
+`outputs/pass2-deepseek`:
+
+```powershell
+uv run python -m tide.cli pass2-public-embed --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-public --batch-size 16
+uv run python -m tide.cli pass2-public-retrieve --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-public
+uv run --env-file .env python -m tide.cli pass2-public-rerank --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-public --timeout 240 --retries 5 --concurrency 16 --candidate-group-size 4 --candidate-filter top10 --overwrite
+```
+
+`--candidate-filter top10` keeps at most ten candidates already in each target's
+retrieval list; it never changes `retrieval_candidates.jsonl`. In public mode it
+first preserves the cached same-agent history (up to three events), then fills
+the remaining slots by descending similarity. In private mode it selects the
+ten highest-similarity candidates. The rerank summary reports counts before and
+after filtering. `--overwrite` resets only public rerank outputs, not the public
+embedding or retrieval caches.
+
+The public caches have separate configuration fingerprints and are marked
+`context_mode: public`. Public and private stages refuse to share or overwrite
+each other's output directory. Resume each public stage by repeating its
+command; use `--overwrite` only to restart that public stage's own cache.
 
 ## Run tests
 
@@ -555,5 +636,78 @@ Do not attempt to process every row in AI Village, train a GNN, or estimate high
 - AI Digest. [AI Village dataset](https://huggingface.co/datasets/aidigestorg/ai-village). Dataset includes event timelines, chat, computer-use sessions/turns, memories and goals. Check the current dataset card, schema, changelog and research terms before use.
 - Apart Research. [Swarm Alignment Hackathon 2026 — resources and tracks](https://apartresearch.com/sprints/swarm-alignment-2026#resources). Includes Track 2 and Track 4 related work, project ideas and submission requirements.
 - Schreiber, T. (2000). [Measuring Information Transfer](https://doi.org/10.1103/PhysRevLett.85.461). Physical Review Letters, 85, 461–464. Foundational reference for transfer entropy; use conditional variants carefully and do not interpret them as automatic causal proof.
+
+## Pass 1 and Pass 2 graph analysis
+
+Install the project dependencies, including igraph, with `uv sync`. The analysis
+can snapshot a running rerank checkpoint without changing it. Choose thresholds
+explicitly; the following values are examples, not calibrated cutoffs:
+
+```powershell
+uv run python -m tide.cli analyze-graphs --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --pass2-dir outputs/pass2-deepseek --output-dir outputs/analysis-private --similarity-threshold 0.5 --dependency-threshold 0.5
+uv run python -m tide.cli analyze-graphs --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --pass2-dir outputs/pass2-public --output-dir outputs/analysis-public --similarity-threshold 0.5 --dependency-threshold 0.5
+```
+
+Each output directory must be empty and separate from the input directories.
+Run again with a new directory to capture progress or try different thresholds.
+The summary records input hashes, the checkpoint snapshot hash, thresholds,
+candidate filter, seed, and completed and missing target counts. The analysis
+verifies that dataset and annotation hashes match the retrieval cache. Only
+complete checkpoint lines are read; incomplete targets are not treated as having
+no dependencies.
+
+To compare the same 1,200 events across private and public outputs, add
+`--cohort-retrieval outputs/pass2-public/retrieval_candidates.jsonl --cohort-limit 1200`
+to both commands, using new output directories. This selects the first 1,200
+chronological public retrieval targets, matching the public rerank limit, and
+keeps only edges whose endpoints are both in that cohort. Pass 1 reference
+resolution still uses the full event history before boundary edges are removed;
+it does not reconnect references to a different in-cohort event. The summary
+records a cohort ID hash, excluded boundary edges, and coverage for each run.
+Check that cohort hashes match and account for missing reranked targets and
+different candidate filters before comparing results.
+
+Each graph has event and agent edge JSONL files and statistics JSON files. All
+non-consolidation events are included as event nodes, including isolates. Agent
+nodes include all authors in those events. Edges point from the earlier source to
+the later target. Pass 1 `from_agent` references link the nearest strictly
+earlier event by that agent to the annotated event; `to_agent` links the
+annotated event to the nearest strictly later event by that agent. Simultaneous
+events are never linked; ties at the chosen earlier or later timestamp use
+source order. References without a matching event or timestamp are counted.
+Duplicate Pass 1 links are merged, retaining reference types.
+
+The separate `pass1_direct_agent` graph uses the annotations directly: an
+event by A with `from_agent: B` contributes B -> A, and `to_agent: B`
+contributes A -> B. It does not choose a neighboring event. Its edge weight
+counts references, separated by type, and its edge records include the
+supporting event IDs. Agents referenced in the cohort are included even if
+they authored no cohort event. `--min-direct-references` sets the inclusive
+minimum count for an ordered agent pair (default 1); this is not a similarity
+or dependency-score threshold. These annotations include intended recipients
+and explicitly identified sources, and are not confirmed communication or
+causal links.
+
+`pass2_retrieval` contains all retrieved pairs at or above the similarity
+threshold, with similarity stored as an attribute and no graph weight.
+`pass2_retrieval_matched` applies the configured rerank candidate filter and
+includes only completed rerank targets. `pass2_reranked` includes scored pairs
+at or above the dependency threshold, weighted by dependency score; it is not
+additionally filtered by similarity. Both cutoffs are inclusive. Even the
+matched graphs can differ because their thresholds measure different quantities.
+The public and private candidate filters may also differ, so their outputs need
+not have the same candidate universe.
+
+Agent edges aggregate event edges by ordered author pair, including self-links.
+Their weights are edge counts for unweighted graphs and sums of dependency
+scores for reranked graphs; each also records its event-edge count. Event edges
+with an unknown author cannot be aggregated and are counted in the summary.
+Statistics include per-node in/out degree, weighted strengths, weak and strong
+components, degree distributions and Leiden communities. Leiden uses modularity
+on an undirected projection, summing reciprocal weights; zero-weight edges are
+excluded from that projection only. Agent communities use aggregated weights.
+The seed is configurable with `--seed`, but results can vary across igraph
+versions. Reference links, similarity, and model-scored dependencies are not
+proof of causation or communication.
 
 

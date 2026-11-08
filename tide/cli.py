@@ -21,7 +21,8 @@ from tide.io_utils import write_json
 from tide.io_utils import write_jsonl
 from tide.pipeline import run_synthetic_pipeline
 from tide.pass1 import run_pass1
-from tide.pass2 import EMBEDDING_MODEL, EMBEDDING_REVISION, run_pass2
+from tide.pass2 import EMBEDDING_MODEL, EMBEDDING_REVISION
+from tide.pass2_stages import run_pass2_all, run_pass2_embed, run_pass2_rerank, run_pass2_retrieve
 
 
 def _cmd_run_synthetic(args: argparse.Namespace) -> int:
@@ -78,14 +79,99 @@ def _cmd_pass2(args: argparse.Namespace) -> int:
     api_key = os.environ.get(args.api_key_env, "")
     if not api_key:
         raise ValueError(f"Set {args.api_key_env} before running Pass 2")
-    result = run_pass2(
+    result = run_pass2_all(
         args.dataset_dir, args.pass1_dir, args.output_dir, api_key,
         model=args.model, embedding_model=args.embedding_model,
-        embedding_revision=args.embedding_revision, batch_size=args.batch_size,
-        limit=args.limit, timeout=args.timeout, retries=args.retries, overwrite=args.overwrite,
+        embedding_revision=args.embedding_revision, precision=args.precision,
+        batch_size=args.batch_size,
+        limit=args.limit, timeout=args.timeout, retries=args.retries,
+        concurrency=args.concurrency, candidate_group_size=args.candidate_group_size,
+        candidate_filter=args.candidate_filter, overwrite=args.overwrite,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 1 if result["failures"] else 0
+
+
+def _cmd_pass2_embed(args: argparse.Namespace) -> int:
+    result = run_pass2_embed(
+        args.dataset_dir, args.output_dir, embedding_model=args.embedding_model,
+        embedding_revision=args.embedding_revision, precision=args.precision,
+        batch_size=args.batch_size,
+        overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["failures"] else 0
+
+
+def _cmd_pass2_retrieve(args: argparse.Namespace) -> int:
+    result = run_pass2_retrieve(
+        args.dataset_dir, args.pass1_dir, args.output_dir,
+        limit=args.limit, overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_pass2_rerank(args: argparse.Namespace) -> int:
+    api_key = os.environ.get(args.api_key_env, "")
+    if not api_key:
+        raise ValueError(f"Set {args.api_key_env} before running Pass 2 reranking")
+    result = run_pass2_rerank(
+        args.dataset_dir, args.output_dir, api_key, model=args.model,
+        timeout=args.timeout, retries=args.retries, concurrency=args.concurrency,
+        candidate_group_size=args.candidate_group_size, candidate_filter=args.candidate_filter,
+        limit=args.limit, overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["failures"] else 0
+
+
+def _cmd_pass2_public_embed(args: argparse.Namespace) -> int:
+    result = run_pass2_embed(
+        args.dataset_dir, args.output_dir, embedding_model=args.embedding_model,
+        embedding_revision=args.embedding_revision, precision=args.precision,
+        batch_size=args.batch_size, context_mode="public", pass1_dir=args.pass1_dir,
+        overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["failures"] else 0
+
+
+def _cmd_pass2_public_retrieve(args: argparse.Namespace) -> int:
+    result = run_pass2_retrieve(
+        args.dataset_dir, args.pass1_dir, args.output_dir,
+        limit=args.limit, context_mode="public", overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_pass2_public_rerank(args: argparse.Namespace) -> int:
+    api_key = os.environ.get(args.api_key_env, "")
+    if not api_key:
+        raise ValueError(f"Set {args.api_key_env} before running public Pass 2 reranking")
+    result = run_pass2_rerank(
+        args.dataset_dir, args.output_dir, api_key, model=args.model,
+        timeout=args.timeout, retries=args.retries, concurrency=args.concurrency,
+        candidate_group_size=args.candidate_group_size, candidate_filter=args.candidate_filter,
+        context_mode="public",
+        pass1_dir=args.pass1_dir, limit=args.limit, overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["failures"] else 0
+
+
+def _cmd_analyze_graphs(args: argparse.Namespace) -> int:
+    from tide.graph_analysis import run_graph_analysis
+
+    result = run_graph_analysis(
+        args.dataset_dir, args.pass1_dir, args.pass2_dir, args.output_dir,
+        similarity_threshold=args.similarity_threshold, dependency_threshold=args.dependency_threshold,
+        seed=args.seed, cohort_retrieval=args.cohort_retrieval, cohort_limit=args.cohort_limit,
+        min_direct_references=args.min_direct_references,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
 
 
 def _cmd_extended_validation(args: argparse.Namespace) -> int:
@@ -190,12 +276,95 @@ def build_parser() -> argparse.ArgumentParser:
     p_pass2.add_argument("--api-key-env", default="ADAPTION_API_KEY", help="Environment variable containing the API key")
     p_pass2.add_argument("--embedding-model", default=EMBEDDING_MODEL, help="Hugging Face embedding model")
     p_pass2.add_argument("--embedding-revision", default=EMBEDDING_REVISION, help="Pinned Hugging Face model revision")
+    p_pass2.add_argument("--precision", choices=("auto", "float16", "float32"), default="auto", help="Embedding precision; auto uses FP16 on CUDA")
     p_pass2.add_argument("--batch-size", type=int, default=32, help="Embedding batch size")
     p_pass2.add_argument("--limit", type=int, default=None, help="Rerank only the first N annotated target events")
     p_pass2.add_argument("--timeout", type=float, default=120, help="DeepSeek request timeout in seconds")
     p_pass2.add_argument("--retries", type=int, default=3, help="Retries for transient DeepSeek request failures")
+    p_pass2.add_argument("--concurrency", type=int, default=1, help="Maximum simultaneous DeepSeek reranking requests")
+    p_pass2.add_argument("--candidate-group-size", type=int, default=4, help="Maximum candidates sent per target request")
+    p_pass2.add_argument("--candidate-filter", choices=("none", "top10", "proposed"), default="none", help="Filter the cached candidate list before reranking")
     p_pass2.add_argument("--overwrite", action="store_true", help="Replace existing Pass 2 outputs and checkpoints")
     p_pass2.set_defaults(func=_cmd_pass2)
+
+    p_pass2_embed = sub.add_parser("pass2-embed", help="Run or resume Pass 2 event embedding")
+    p_pass2_embed.add_argument("--dataset-dir", required=True, help="Processed dataset directory containing events.jsonl and agents.jsonl")
+    p_pass2_embed.add_argument("--output-dir", required=True, help="Shared Pass 2 cache/output directory")
+    p_pass2_embed.add_argument("--embedding-model", default=EMBEDDING_MODEL, help="Hugging Face embedding model")
+    p_pass2_embed.add_argument("--embedding-revision", default=EMBEDDING_REVISION, help="Pinned Hugging Face model revision")
+    p_pass2_embed.add_argument("--precision", choices=("auto", "float16", "float32"), default="auto", help="Embedding precision; auto uses FP16 on CUDA")
+    p_pass2_embed.add_argument("--batch-size", type=int, default=32, help="Embedding batch size")
+    p_pass2_embed.add_argument("--overwrite", action="store_true", help="Reset the embedding cache and checkpoint")
+    p_pass2_embed.set_defaults(func=_cmd_pass2_embed)
+
+    p_pass2_retrieve = sub.add_parser("pass2-retrieve", help="Generate and cache Pass 2 historical candidates")
+    p_pass2_retrieve.add_argument("--dataset-dir", required=True, help="Processed dataset directory containing events.jsonl and agents.jsonl")
+    p_pass2_retrieve.add_argument("--pass1-dir", required=True, help="Pass 1 output directory containing annotations or checkpoint")
+    p_pass2_retrieve.add_argument("--output-dir", required=True, help="Shared Pass 2 cache/output directory")
+    p_pass2_retrieve.add_argument("--limit", type=int, default=None, help="Retrieve candidates for only the first N annotated targets")
+    p_pass2_retrieve.add_argument("--overwrite", action="store_true", help="Reset the retrieval cache and checkpoint")
+    p_pass2_retrieve.set_defaults(func=_cmd_pass2_retrieve)
+
+    p_pass2_rerank = sub.add_parser("pass2-rerank", help="Run or resume Pass 2 LLM dependency reranking")
+    p_pass2_rerank.add_argument("--dataset-dir", required=True, help="Processed dataset directory containing events.jsonl and agents.jsonl")
+    p_pass2_rerank.add_argument("--output-dir", required=True, help="Shared Pass 2 cache/output directory")
+    p_pass2_rerank.add_argument("--model", default="deepseek-v4-flash", help="DeepSeek model identifier")
+    p_pass2_rerank.add_argument("--api-key-env", default="ADAPTION_API_KEY", help="Environment variable containing the API key")
+    p_pass2_rerank.add_argument("--timeout", type=float, default=120, help="DeepSeek request timeout in seconds")
+    p_pass2_rerank.add_argument("--retries", type=int, default=3, help="Retries for transient DeepSeek request failures")
+    p_pass2_rerank.add_argument("--concurrency", type=int, default=1, help="Maximum simultaneous DeepSeek reranking requests")
+    p_pass2_rerank.add_argument("--candidate-group-size", type=int, default=4, help="Maximum candidates sent per target request")
+    p_pass2_rerank.add_argument("--candidate-filter", choices=("none", "top10", "proposed"), default="none", help="Filter the cached candidate list before reranking")
+    p_pass2_rerank.add_argument("--limit", type=int, default=None, help="Rerank only the first N chronological targets")
+    p_pass2_rerank.add_argument("--overwrite", action="store_true", help="Reset the reranking cache and checkpoint")
+    p_pass2_rerank.set_defaults(func=_cmd_pass2_rerank)
+
+    p_public_embed = sub.add_parser("pass2-public-embed", help="Embed Pass 1 public summaries only")
+    p_public_embed.add_argument("--dataset-dir", required=True, help="Processed dataset directory")
+    p_public_embed.add_argument("--pass1-dir", required=True, help="Pass 1 directory containing public summaries")
+    p_public_embed.add_argument("--output-dir", required=True, help="Separate public-context Pass 2 output directory")
+    p_public_embed.add_argument("--embedding-model", default=EMBEDDING_MODEL, help="Hugging Face embedding model")
+    p_public_embed.add_argument("--embedding-revision", default=EMBEDDING_REVISION, help="Pinned Hugging Face model revision")
+    p_public_embed.add_argument("--precision", choices=("auto", "float16", "float32"), default="auto", help="Embedding precision; auto uses FP16 on CUDA")
+    p_public_embed.add_argument("--batch-size", type=int, default=32, help="Embedding batch size")
+    p_public_embed.add_argument("--overwrite", action="store_true", help="Reset only the public embedding cache")
+    p_public_embed.set_defaults(func=_cmd_pass2_public_embed)
+
+    p_public_retrieve = sub.add_parser("pass2-public-retrieve", help="Retrieve candidates using public-summary embeddings")
+    p_public_retrieve.add_argument("--dataset-dir", required=True, help="Processed dataset directory")
+    p_public_retrieve.add_argument("--pass1-dir", required=True, help="Pass 1 directory containing summaries and local references")
+    p_public_retrieve.add_argument("--output-dir", required=True, help="Separate public-context Pass 2 output directory")
+    p_public_retrieve.add_argument("--limit", type=int, default=None, help="Retrieve candidates for only the first N annotated targets")
+    p_public_retrieve.add_argument("--overwrite", action="store_true", help="Reset only the public retrieval cache")
+    p_public_retrieve.set_defaults(func=_cmd_pass2_public_retrieve)
+
+    p_public_rerank = sub.add_parser("pass2-public-rerank", help="Rerank candidates using public summaries only")
+    p_public_rerank.add_argument("--dataset-dir", required=True, help="Processed dataset directory")
+    p_public_rerank.add_argument("--pass1-dir", required=True, help="Pass 1 directory containing public summaries")
+    p_public_rerank.add_argument("--output-dir", required=True, help="Separate public-context Pass 2 output directory")
+    p_public_rerank.add_argument("--model", default="deepseek-v4-flash", help="DeepSeek model identifier")
+    p_public_rerank.add_argument("--api-key-env", default="ADAPTION_API_KEY", help="Environment variable containing the API key")
+    p_public_rerank.add_argument("--timeout", type=float, default=120, help="DeepSeek request timeout in seconds")
+    p_public_rerank.add_argument("--retries", type=int, default=3, help="Retries for transient DeepSeek request failures")
+    p_public_rerank.add_argument("--concurrency", type=int, default=1, help="Maximum simultaneous DeepSeek requests")
+    p_public_rerank.add_argument("--candidate-group-size", type=int, default=4, help="Maximum candidates sent per target request")
+    p_public_rerank.add_argument("--candidate-filter", choices=("none", "top10", "proposed"), default="none", help="Filter the cached candidate list before reranking")
+    p_public_rerank.add_argument("--limit", type=int, default=None, help="Rerank only the first N chronological targets")
+    p_public_rerank.add_argument("--overwrite", action="store_true", help="Reset only the public rerank cache")
+    p_public_rerank.set_defaults(func=_cmd_pass2_public_rerank)
+
+    p_analysis = sub.add_parser("analyze-graphs", help="Analyze Pass 1 and Pass 2 event and agent graphs")
+    p_analysis.add_argument("--dataset-dir", required=True, help="Processed dataset directory")
+    p_analysis.add_argument("--pass1-dir", required=True, help="Pass 1 annotations directory")
+    p_analysis.add_argument("--pass2-dir", required=True, help="Private or public staged Pass 2 directory")
+    p_analysis.add_argument("--output-dir", required=True, help="Empty directory for analysis results")
+    p_analysis.add_argument("--similarity-threshold", required=True, type=float, help="Inclusive retrieval similarity threshold")
+    p_analysis.add_argument("--dependency-threshold", required=True, type=float, help="Inclusive reranked dependency threshold")
+    p_analysis.add_argument("--seed", type=int, default=0, help="Leiden random seed")
+    p_analysis.add_argument("--cohort-retrieval", default=None, help="Retrieval JSONL defining a common target cohort")
+    p_analysis.add_argument("--cohort-limit", type=int, default=None, help="First N chronological targets in the cohort retrieval cache")
+    p_analysis.add_argument("--min-direct-references", type=int, default=1, help="Minimum direct Pass 1 references per ordered agent pair")
+    p_analysis.set_defaults(func=_cmd_analyze_graphs)
 
     p_ext = sub.add_parser("run-extended-validation", help="Run extended synthetic benchmark and write report")
     p_ext.add_argument("--output-dir", default="outputs/extended_validation", help="Output directory for machine-readable results")
