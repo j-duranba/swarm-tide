@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import bisect
+import difflib
 import hashlib
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -13,6 +15,7 @@ from typing import Any, Iterable
 INPUT_FILES = (
     "events.jsonl",
     "chat_messages.jsonl",
+    "agent_memories.jsonl",
     "agents.jsonl",
     "agent_goals.jsonl",
     "village_goals.jsonl",
@@ -85,6 +88,19 @@ def stable_digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def memory_delta(previous: str, current: str, limit: int = 5000) -> dict[str, Any]:
+    if current.startswith(previous):
+        added = current[len(previous):]
+        deleted = False
+    else:
+        old_lines = previous.splitlines(keepends=True)
+        new_lines = current.splitlines(keepends=True)
+        operations = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False).get_opcodes()
+        added = "".join("".join(new_lines[start:end]) for tag, _, _, start, end in operations if tag in ("insert", "replace"))
+        deleted = any(tag in ("delete", "replace") for tag, _, _, _, _ in operations)
+    return {"text": added[-limit:], "added_characters": len(added), "truncated": len(added) > limit, "previous_text_removed_or_replaced": deleted}
+
+
 def active_at(start: Any, end: Any, point: datetime) -> bool:
     starts = parse_timestamp(start)
     ends = parse_timestamp(end)
@@ -136,6 +152,7 @@ class SliceBuilder:
         self.village_goals: list[dict[str, Any]] = []
         self.rooms: dict[str, dict[str, Any]] = {}
         self.chat_by_message_id: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+        self.memories_by_agent: dict[str, list[tuple[datetime, int, int, str]]] = {}
         self.input_counts: Counter[str] = Counter()
         self.output_counts: Counter[str] = Counter()
         self.metrics: Counter[str] = Counter()
@@ -190,6 +207,83 @@ class SliceBuilder:
             if sequence % 50000 == 0:
                 print(f"[slice] chat messages indexed: {sequence:,}", flush=True)
         print(f"[slice] chat messages indexed: {self.input_counts['chat_messages']:,}", flush=True)
+
+    def index_memories(self) -> None:
+        path = self.dataset_dir / "agent_memories.jsonl"
+        print(f"[slice] indexing {path.name}", flush=True)
+        with path.open("rb") as source:
+            line_number = 0
+            while True:
+                offset = source.tell()
+                line = source.readline()
+                if not line:
+                    break
+                line_number += 1
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                    raise ValueError(f"Malformed JSON in {path} line {line_number}") from error
+                if not isinstance(row, dict):
+                    raise ValueError(f"Expected a JSON object in {path} line {line_number}")
+                self.input_counts["agent_memories"] += 1
+                stamp = parse_timestamp(row.get("created_at"))
+                agent_id, memory_id = row.get("agent_id"), row.get("id")
+                if stamp is None or not isinstance(agent_id, str) or not agent_id or not isinstance(memory_id, str) or not memory_id:
+                    self.metrics["invalid_memory_records"] += 1
+                elif stamp < self.end:
+                    self.memories_by_agent.setdefault(agent_id, []).append((stamp, offset, line_number, memory_id))
+        for entries in self.memories_by_agent.values():
+            entries.sort()
+        print(f"[slice] memories indexed: {self.input_counts['agent_memories']:,}", flush=True)
+
+    def memory_context(self, event_data: dict[str, Any], timestamp: datetime) -> dict[str, Any]:
+        entries = self.memories_by_agent.get(event_data.get("agentId"), [])
+        lower = bisect.bisect_left(entries, (timestamp - timedelta(seconds=1), -1, -1, ""))
+        upper = bisect.bisect_right(entries, (timestamp, sys.maxsize, sys.maxsize, ""))
+        if upper - lower != 1:
+            status = "unmatched" if upper == lower else "ambiguous"
+            self.metrics[f"memory_{status}"] += 1
+            return {"status": status, "candidate_count": upper - lower}
+        current = entries[lower]
+        previous = entries[lower - 1] if lower > 0 else None
+        result: dict[str, Any] = {
+            "status": "matched",
+            "match_method": "same_agent_preceding_within_1_second",
+            "source_file": "agent_memories.jsonl",
+            "memory_id": current[3],
+            "memory_line": current[2],
+            "memory_timestamp_utc": utc_text(current[0]),
+            "previous_memory_id": previous[3] if previous else None,
+            "previous_memory_line": previous[2] if previous else None,
+            "previous_memory_timestamp_utc": utc_text(previous[0]) if previous else None,
+            "delta": None,
+        }
+        self.metrics["memory_matched"] += 1
+        if previous is None:
+            result["status"] = "no_previous_memory"
+            self.metrics["memory_no_previous"] += 1
+            return result
+        if lower > 1 and entries[lower - 2][0] == previous[0]:
+            result["status"] = "ambiguous_previous_memory"
+            self.metrics["memory_ambiguous_previous"] += 1
+            return result
+        path = self.dataset_dir / "agent_memories.jsonl"
+        with path.open("rb") as source:
+            source.seek(previous[1])
+            previous_content = json.loads(source.readline()).get("content")
+            source.seek(current[1])
+            current_content = json.loads(source.readline()).get("content")
+        if not isinstance(previous_content, str) or not isinstance(current_content, str):
+            result["status"] = "invalid_memory_content"
+            self.metrics["memory_invalid_content"] += 1
+            return result
+        result["delta"] = memory_delta(previous_content, current_content)
+        self.metrics["memory_deltas"] += 1
+        if result["delta"]["truncated"]:
+            self.metrics["memory_deltas_truncated"] += 1
+        return result
 
     def goal_context(self, agent_id: str | None, village_id: str | None, point: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         agent_goals = []
@@ -285,7 +379,7 @@ class SliceBuilder:
                 "record": chat,
             })
 
-        return {
+        result = {
             "record_type": "ai_village_event",
             "timestamp_original": event_row.get("created_at"),
             "timestamp_utc": utc_text(timestamp),
@@ -310,11 +404,15 @@ class SliceBuilder:
             },
             "linked_chat_messages": linked_messages,
         }
+        if event_data.get("actionType") == "CONSOLIDATE":
+            result["memory_update"] = self.memory_context(event_data, timestamp)
+        return result
 
     def run(self) -> Path:
         self.validate_inputs()
         self.load_dimensions()
         self.index_chat_messages()
+        self.index_memories()
 
         output_directory = create_version_directory(self.requested_output, overwrite=self.overwrite)
         self.output_dir = output_directory
@@ -418,6 +516,7 @@ class SliceBuilder:
                 "identity_rule": "Agent identity is validated by exact match to agents.id. User/HUMAN speakers remain distinguishable in source fields and identity.class.",
                 "event_output_policy": "All original event output components are preserved, including reasoning, thinking, redacted_reasoning, function calls, and arguments.",
                 "metadata_join_policy": "Include the matching registered-agent record, agent goals active at event time, village goals active at event time and matching village_id, and referenced room metadata.",
+                "memory_join_policy": "For CONSOLIDATE, match a unique same-agent memory created within the preceding second; retain source IDs and the last 5000 characters of added or replacement lines relative to the preceding memory. Missing or ambiguous matches and absent previous memories are flagged. Deleted lines are not included.",
                 "ordering": "UTC timestamp ascending, then original events.jsonl line number ascending; equal-timestamp records are retained.",
                 "version_selection": "Requested output directory is never overwritten; if it exists, the next numbered vN directory is created.",
             },
@@ -434,6 +533,15 @@ class SliceBuilder:
                 "event_output_component_types_preserved": dict(self.output_component_types_output),
                 "function_call_components_preserved": self.metrics["function_call_components_output"],
                 "equal_timestamp_adjacent_pairs": equal_timestamp_pairs,
+                "memory_matches": self.metrics["memory_matched"],
+                "memory_unmatched": self.metrics["memory_unmatched"],
+                "memory_ambiguous": self.metrics["memory_ambiguous"],
+                "memory_no_previous": self.metrics["memory_no_previous"],
+                "memory_ambiguous_previous": self.metrics["memory_ambiguous_previous"],
+                "memory_invalid_content": self.metrics["memory_invalid_content"],
+                "memory_invalid_records": self.metrics["invalid_memory_records"],
+                "memory_deltas": self.metrics["memory_deltas"],
+                "memory_deltas_truncated": self.metrics["memory_deltas_truncated"],
             },
             "validation": {
                 "sender_match_count": self.sender_checks["match"],
@@ -481,6 +589,7 @@ class SliceBuilder:
 |---|---:|---:|
 | events | {self.input_counts['events']:,} | {self.output_counts['events']:,} |
 | chat_messages | {self.input_counts['chat_messages']:,} | {counts['unique_matched_chat_records']:,} linked at least once |
+| agent_memories | {self.input_counts['agent_memories']:,} | {counts['memory_matches']:,} matched consolidations |
 | agents | {self.input_counts['agents']:,} | {self.output_counts['agents']:,} referenced registered IDs |
 | agent_goals | {self.input_counts['agent_goals']:,} | {self.output_counts['agent_goals']:,} active goals for included registered IDs |
 | village_goals | {self.input_counts['village_goals']:,} | {self.output_counts['village_goals']:,} active matching-village goals |
@@ -493,6 +602,7 @@ class SliceBuilder:
 - Input chat rows not linked to any selected event: **{counts['input_chat_records_not_linked_to_slice_events']:,}**. These are not emitted as standalone events.
 - Event output components, including reasoning/thinking/redacted-reasoning: **all preserved** (`{json.dumps(checks['event_output_component_types_output'], ensure_ascii=False)}`).
 - Function-call output components preserved: **{counts['function_call_components_preserved']:,}**; full component digests match before/after filtering: **{checks['function_call_arguments_preserved']}**.
+- Memory updates: **{counts['memory_deltas']:,}** deltas, **{counts['memory_deltas_truncated']:,}** truncated; **{counts['memory_unmatched']:,}** unmatched and **{counts['memory_ambiguous']:,}** ambiguous matches. The same-agent/time join is inferred, and memory deltas may contain private information.
 
 ## Checks
 

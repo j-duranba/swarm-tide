@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "TIDE Hackathon Prototype" }]
-dependencies = ["matplotlib>=3.8"]
+dependencies = ["matplotlib>=3.8", "adaption>=0.19.0", "tqdm>=4.66"]
+
+[project.optional-dependencies]
+pass2 = ["numpy>=1.26", "torch>=2.2", "transformers>=4.51"]
 
 [tool.setuptools]
 packages = ["tide"]

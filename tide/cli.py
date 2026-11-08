@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -19,6 +20,8 @@ from tide.ingest import load_table_rows, normalize_table
 from tide.io_utils import write_json
 from tide.io_utils import write_jsonl
 from tide.pipeline import run_synthetic_pipeline
+from tide.pass1 import run_pass1
+from tide.pass2 import EMBEDDING_MODEL, EMBEDDING_REVISION, run_pass2
 
 
 def _cmd_run_synthetic(args: argparse.Namespace) -> int:
@@ -56,6 +59,33 @@ def _cmd_normalize_events(args: argparse.Namespace) -> int:
         write_jsonl(raw_out, raw_rows)
     print(json.dumps({"normalized_events": len(rows), "output": args.output}, indent=2, sort_keys=True))
     return 0
+
+
+def _cmd_pass1(args: argparse.Namespace) -> int:
+    api_key = os.environ.get(args.api_key_env, "")
+    if not api_key:
+        raise ValueError(f"Set {args.api_key_env} before running Pass 1")
+    result = run_pass1(
+        args.dataset_dir, args.output_dir, args.model, api_key,
+        concurrency=args.concurrency, limit=args.limit, timeout=args.timeout,
+        retries=args.retries, overwrite=args.overwrite, retry_errors_only=args.retry_errors_only,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["unresolved_total"] else 0
+
+
+def _cmd_pass2(args: argparse.Namespace) -> int:
+    api_key = os.environ.get(args.api_key_env, "")
+    if not api_key:
+        raise ValueError(f"Set {args.api_key_env} before running Pass 2")
+    result = run_pass2(
+        args.dataset_dir, args.pass1_dir, args.output_dir, api_key,
+        model=args.model, embedding_model=args.embedding_model,
+        embedding_revision=args.embedding_revision, batch_size=args.batch_size,
+        limit=args.limit, timeout=args.timeout, retries=args.retries, overwrite=args.overwrite,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 1 if result["failures"] else 0
 
 
 def _cmd_extended_validation(args: argparse.Namespace) -> int:
@@ -138,6 +168,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_norm.add_argument("--output", required=True, help="Output JSONL path")
     p_norm.add_argument("--raw-output", default=None, help="Optional JSONL path to preserve raw source records")
     p_norm.set_defaults(func=_cmd_normalize_events)
+
+    p_pass1 = sub.add_parser("pass1", help="Annotate source events using Adaption")
+    p_pass1.add_argument("--dataset-dir", default="data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v1")
+    p_pass1.add_argument("--output-dir", required=True, help="Separate output directory for annotations and checkpoints")
+    p_pass1.add_argument("--model", default="deepseek-v4-flash", help="Provider model identifier (default: deepseek-v4-flash)")
+    p_pass1.add_argument("--api-key-env", default="ADAPTION_API_KEY", help="Environment variable containing the API key")
+    p_pass1.add_argument("--concurrency", type=int, default=1, help="Maximum simultaneous individual requests")
+    p_pass1.add_argument("--limit", type=int, default=None, help="Process only the first N non-consolidation events")
+    p_pass1.add_argument("--timeout", type=float, default=120, help="Request timeout in seconds")
+    p_pass1.add_argument("--retries", type=int, default=3, help="Retries for transient request failures")
+    p_pass1.add_argument("--overwrite", action="store_true", help="Replace existing Pass 1 annotations and checkpoints")
+    p_pass1.add_argument("--retry-errors-only", action="store_true", help="Retry only events recorded in pass1_errors.jsonl")
+    p_pass1.set_defaults(func=_cmd_pass1)
+
+    p_pass2 = sub.add_parser("pass2", help="Retrieve and rerank historical event dependencies")
+    p_pass2.add_argument("--dataset-dir", required=True, help="Processed dataset directory containing events.jsonl and agents.jsonl")
+    p_pass2.add_argument("--pass1-dir", required=True, help="Pass 1 output directory containing annotations or checkpoint")
+    p_pass2.add_argument("--output-dir", required=True, help="Separate Pass 2 output directory")
+    p_pass2.add_argument("--model", default="deepseek-v4-flash", help="DeepSeek model identifier")
+    p_pass2.add_argument("--api-key-env", default="ADAPTION_API_KEY", help="Environment variable containing the API key")
+    p_pass2.add_argument("--embedding-model", default=EMBEDDING_MODEL, help="Hugging Face embedding model")
+    p_pass2.add_argument("--embedding-revision", default=EMBEDDING_REVISION, help="Pinned Hugging Face model revision")
+    p_pass2.add_argument("--batch-size", type=int, default=32, help="Embedding batch size")
+    p_pass2.add_argument("--limit", type=int, default=None, help="Rerank only the first N annotated target events")
+    p_pass2.add_argument("--timeout", type=float, default=120, help="DeepSeek request timeout in seconds")
+    p_pass2.add_argument("--retries", type=int, default=3, help="Retries for transient DeepSeek request failures")
+    p_pass2.add_argument("--overwrite", action="store_true", help="Replace existing Pass 2 outputs and checkpoints")
+    p_pass2.set_defaults(func=_cmd_pass2)
 
     p_ext = sub.add_parser("run-extended-validation", help="Run extended synthetic benchmark and write report")
     p_ext.add_argument("--output-dir", default="outputs/extended_validation", help="Output directory for machine-readable results")

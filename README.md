@@ -69,6 +69,102 @@ Before using AI Village data:
 - follow licensing and privacy constraints;
 - treat generated summaries as convenience signals, not ground truth for computer-use actions.
 
+## Pass 1: remote annotation
+
+Pass 1 is implemented in `tide.pass1`. Its system prompt includes the canonical
+agent display names and their model-string aliases, plus an example of an
+anonymized summary and distinct recipient/source references. The model returns
+only `summary`, `to_agent`, and `from_agent`; the pipeline attaches the source
+`event_id` locally. References must be exact, unique names from `agents.jsonl`,
+not UUIDs. Model output is validated structurally, but the factual correctness,
+anonymity, and evidence behind references still require review.
+
+The pipeline uses the official Adaption Python SDK and its Responses API.
+Each event is an independent request with tools, agentic memory and response
+storage disabled. The prompt requests JSON and the pipeline validates it; it does
+not use an API-enforced JSON mode. Confirm your data policy and rate/concurrency
+limits before running; provider-side batching is not implemented. Adaption's
+documented Responses API does not expose a batch endpoint; `--concurrency` sends
+separate requests concurrently. No model is run locally.
+
+Pass 1 skips `CONSOLIDATE` events; their source records are unchanged. Only action
+type, registered actor name, and `AGENT_TALK`/`USER_TALK` message
+content are sent. Raw model outputs (including reasoning and tool calls), goals,
+and other metadata are excluded. Public messages may themselves contain sensitive
+information: this code does not automatically detect or redact it. Review the
+data and provider's handling requirements before transmitting it. Events without
+public chat will often have insufficient context for informative summaries or
+references; missing information must not be inferred. Pass 2 is not implemented
+by this command.
+
+Set `ADAPTION_API_KEY` in a local `.env` file (which is gitignored), then run a
+small pilot with the default model, `deepseek-v4-flash`:
+
+```powershell
+uv run --env-file .env python -m tide.cli pass1 --output-dir outputs/pass1 --limit 3
+```
+
+Use `--model` to select another model available to your account. Remove `--limit`
+to process the full dataset, or change `--concurrency` only
+after checking the provider's limits. The output directory
+must be outside the master dataset; it contains `annotations.jsonl` and the
+append-only checkpoint `pass1_checkpoint.jsonl` and `pass1_config.json`. Invalid
+JSON and invalid annotation fields get up to two additional correction requests.
+Events still failing after retries are recorded in `pass1_errors.jsonl` without
+stopping other events. The error file contains event IDs, source indexes and
+error messages, not model responses. The command exits nonzero when the run has
+failures. Repeat the same command without `--overwrite` to retry missing events;
+successful events are not requested again and resolved errors are removed. A
+previously interrupted run also continues with its unattempted events. Use
+`--retry-errors-only` to retry only recorded errors, without processing other
+unfinished events; it cannot be combined with `--overwrite`. The checkpoint fingerprints
+the input files, prompt, SDK version, endpoint, and model; changed configurations
+require a new output directory, including runs made before consolidation filtering.
+Alternatively, `--overwrite` starts a fresh run by deleting the existing Pass 1
+configuration, checkpoint, errors, and annotations in the output directory; unrelated
+files are left untouched. This discards saved progress and does not resume.
+`--limit` selects the first N non-consolidation events, so
+the pilot can be resumed without it. A forcibly terminated process may leave a
+`pass1.lock`; remove it only after confirming the process is no longer running.
+Checkpoints survive interruption. During processing, records are appended in
+completion order; when a run finishes, both the checkpoint and annotations are
+ordered by source event position. Deterministic temperature does not guarantee identical remote model
+results. The progress bar shows attempted eligible events (including failed
+ones), the failure count, processing time and an estimated remaining time; the
+final `elapsed_seconds` includes the initial
+dataset check. The initial dataset remains unchanged.
+
+## Pass 2: temporal retrieval and reranking
+
+Pass 2 reads the processed event slice and Pass 1 annotations without changing
+either input. It creates separate query/document embeddings with
+`jinaai/jina-embeddings-v5-text-nano` and retrieval prompts, then combines
+12-hour same-agent message history, annotated information sources, incoming
+messages and dense semantic retrieval. Same-agent history is the explicit
+exception to the cross-source same-agent exclusion. Each candidate set is
+reranked against the full private content and available thinking/reasoning by
+DeepSeek; retrieval similarity is retained separately from dependency scores.
+Source A/B/C refer to the candidate-generation procedure: A's same-agent
+messages are retained, while B-D exclude the target author. Events tied with the
+target timestamp are not retrieved. The model license is CC BY-NC 4.0; check
+usage rights and data-handling requirements before downloading or transmitting
+private traces.
+
+Install the optional local embedding dependencies, then run a small pilot:
+
+```powershell
+uv sync --extra pass2
+uv run --env-file .env python -m tide.cli pass2 --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --pass1-dir outputs/pass1-deepseek-filtered-v2 --output-dir outputs/pass2-deepseek --limit 3
+```
+
+The default embedding revision is pinned to a Hugging Face commit; use
+`--embedding-revision` only when intentionally changing model revisions.
+`event_embeddings.jsonl`, `dependencies.jsonl`, append-only embedding
+and reranking checkpoints, `pass2_errors.jsonl`, and `pass2_config.json` are
+written only under the Pass 2 output directory. Repeating the same command
+resumes missing work; changed inputs or settings require a new output directory,
+or `--overwrite` to start fresh. The API key uses `ADAPTION_API_KEY` by default.
+
 ## Run tests
 
 ```bash

@@ -3,12 +3,65 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts.audit_ai_village import Audit
+from scripts.build_ai_village_slice import SliceBuilder, memory_delta
 
 
 class AiVillageAuditTests(unittest.TestCase):
+    def test_slice_memory_join_and_delta(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = root / "main-village"
+            dataset.mkdir()
+            events = [
+                {"id": "e1", "created_at": "2026-01-01 00:00:01", "data": {"agentId": "a1", "actionType": "CONSOLIDATE", "output": [{"type": "thinking", "text": "preserve"}]}},
+                {"id": "e2", "created_at": "2026-01-01 00:00:03", "data": {"agentId": "a1", "actionType": "CONSOLIDATE"}},
+                {"id": "e3", "created_at": "2026-01-01 00:00:05", "data": {"agentId": "a1", "actionType": "CONSOLIDATE"}},
+                {"id": "e4", "created_at": "2026-01-01 00:00:06", "data": {"agentId": "a2", "actionType": "CONSOLIDATE"}},
+                {"id": "e5", "created_at": "2026-01-01 00:00:07", "data": {"agentId": "a1", "actionType": "WAIT"}},
+            ]
+            memories = [
+                {"id": "old", "agent_id": "a1", "created_at": "2025-12-31 23:59:59", "content": "baseline\n"},
+                {"id": "new", "agent_id": "a1", "created_at": "2026-01-01 00:00:00.500", "content": "baseline\n" + "x" * 6000},
+                {"id": "amb1", "agent_id": "a1", "created_at": "2026-01-01 00:00:02.100", "content": "one"},
+                {"id": "amb2", "agent_id": "a1", "created_at": "2026-01-01 00:00:02.200", "content": "two"},
+                {"id": "first", "agent_id": "a2", "created_at": "2026-01-01 00:00:05.900", "content": "first memory"},
+            ]
+            records = {"events": events, "agent_memories": memories, "agents": [{"id": "a1"}, {"id": "a2"}],
+                       "chat_messages": [], "chat_rooms": [], "agent_goals": [], "village_goals": []}
+            for name, rows in records.items():
+                (dataset / f"{name}.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            builder = SliceBuilder(dataset, root / "slice", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 2, tzinfo=timezone.utc))
+            output = builder.run()
+            rows = [json.loads(line) for line in (output / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[0]["source_event"]["source_record"], events[0])
+            update = rows[0]["memory_update"]
+            self.assertEqual((update["memory_id"], update["previous_memory_id"]), ("new", "old"))
+            self.assertEqual(update["delta"]["text"], "x" * 5000)
+            self.assertTrue(update["delta"]["truncated"])
+            self.assertEqual(rows[1]["memory_update"]["status"], "ambiguous")
+            self.assertEqual(rows[2]["memory_update"]["status"], "unmatched")
+            self.assertEqual(rows[3]["memory_update"]["status"], "no_previous_memory")
+            self.assertIsNone(rows[3]["memory_update"]["delta"])
+            self.assertNotIn("memory_update", rows[4])
+            manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["event_processing_counts"]["memory_deltas"], 1)
+            self.assertEqual(manifest["event_processing_counts"]["memory_deltas_truncated"], 1)
+
+    def test_memory_delta_handles_append_rewrite_and_limit(self) -> None:
+        appended = memory_delta("old\n", "old\nnew\n")
+        self.assertEqual(appended["text"], "new\n")
+        self.assertFalse(appended["previous_text_removed_or_replaced"])
+        rewritten = memory_delta("keep\nold\nend\n", "keep\nnew\nend\n")
+        self.assertEqual(rewritten["text"], "new\n")
+        self.assertTrue(rewritten["previous_text_removed_or_replaced"])
+        long_update = memory_delta("old", "old" + "x" * 6000)
+        self.assertEqual(long_update["text"], "x" * 5000)
+        self.assertTrue(long_update["truncated"])
+
     def make_dataset(self, root: Path) -> Path:
         dataset = root / "main-village"
         dataset.mkdir()
