@@ -1,54 +1,84 @@
 # TIDE — Temporal Inference of Dependencies in Agent Swarms
-**Status:** Research prototype / hackathon project in progress (6–8 November 2026).  
+**Status:** Research prototype; current results are exploratory (9 November 2026).
 **Track:** Primarily Track 4 — Multi-Agent Oversight and Control; related to Track 2 — The Science of Agent Networks.
 
-> **Project summary:** TIDE investigates whether we can reconstruct dependencies between actions in a multi-agent system from observable activity logs. We represent agent activity as structured events, retrieve potentially relevant predecessor events, and estimate whether earlier events support later actions. The resulting event-level dependency graph can be aggregated into a time-varying agent network and analysed for information propagation, relays, brokers and collective behaviour. We explicitly test whether the method mistakes independent agents with identical tasks—or agents reacting to shared external events—for collaboration.
+> **Project summary:** TIDE explores whether potential dependencies between actions in a multi-agent system can be reconstructed from timestamped activity logs. It retrieves earlier candidate events, scores their possible contribution to later events, and compares private-context inference with public-summary inference and explicit references. These outputs are exploratory evidence, not proof of communication, collaboration, or causation.
 
 ---
 
-## 0. Current project status
+## Current status
 
-This README is an initial research plan, not a claim that the experiments have already been completed. Update the status, dataset details, methods, figures and results as implementation proceeds. Clearly label planned, implemented and completed components.
+Implemented components include:
 
-Research prototype for reconstructing **probabilistic event dependencies** from multi-agent traces without relying on private chain-of-thought.
+- AI Village slice construction, schema auditing, and provenance-preserving event loading.
+- Pass 1 remote summaries with explicit `from_agent` and `to_agent` annotations.
+- Private-context and public-summary Pass 2 embedding, candidate retrieval, and reranking.
+- Event and agent graph analysis, including direct-mention predecessor proxies and community statistics.
+- Public-score calibration against matched private scores, with sigmoid-only and sigmoid-plus-temporal-decay variants.
+- Reference-relative network evaluation, event-level mention-proxy evaluation, and synthetic benchmarks.
 
-This repository implements an MVP pipeline that:
+Current real-data comparisons are exploratory: references are incomplete, Pass 2
+candidate filters differ by context, and model scores are not ground-truth
+probabilities. The latest snapshot is summarized below; generated reports,
+metrics, and figures remain local outputs and are not committed. Results are
+reference-relative, not proof that inferred edges are true dependencies.
 
-1. normalizes observable logs into immutable event records;
-2. retrieves plausible earlier predecessor events for each target event;
-3. estimates support/dependency with explicit evidence and abstention;
-4. builds an event-level directed weighted dependency graph;
-5. aggregates to an agent-level directed matrix using the convention  
-   `W[target_agent, source_agent] = support evidence`.
+### Latest evaluation snapshot (9 November 2026)
 
-The implementation keeps the key distinctions explicit:
+The comparison uses 35 registered authors from a 1,200-event cohort. Calibration
+uses the first 200 targets; evaluation uses later jointly completed targets
+(990/1,000 in this snapshot). Agent-pair scores use the maximum event-pair
+score. Self-links are excluded; inferred edges use threshold 0.5. The public
+calibration fits a ranking-only sigmoid and a sigmoid-plus-time-decay model on
+957 matched training pairs, then evaluates both on 3,977 matched holdout pairs.
 
-- retrieval score vs support score;
-- support/dependency vs causation;
-- predictive dependence vs collaboration;
-- similarity vs influence;
-- observed links vs inferred links.
+| Agent network | Edges | Density | Communities | Modularity |
+|---|---:|---:|---:|---:|
+| Direct chat mentions | 71 | 0.060 | 13 | 0.350 |
+| Private-context inference | 104 | 0.087 | 8 | 0.294 |
+| Public TIDE | 114 | 0.096 | 11 | 0.286 |
+| Public TIDE (no temporal) | 152 | 0.128 | 7 | 0.248 |
 
-## Current MVP status
+| Reference comparison | Public variant | Precision | Recall | F1 | AP |
+|---|---|---:|---:|---:|---:|
+| Direct mentions | Public TIDE | 0.500 | 0.803 | 0.616 | 0.636 |
+| Direct mentions | Public TIDE (no temporal) | 0.388 | 0.831 | 0.529 | 0.461 |
+| Private inference | Public TIDE | 0.649 | 0.712 | 0.679 | 0.723 |
+| Private inference | Public TIDE (no temporal) | 0.572 | 0.837 | 0.680 | 0.607 |
 
-The repo currently includes:
+On matched event-pair holdout scores, sigmoid-plus-decay yields MSE 0.0857
+and MAE 0.2249; sigmoid-only yields MSE 0.0906 and MAE 0.2384. At threshold
+0.5 their precision/recall are 0.809/0.502 and 0.776/0.474, respectively.
+This favors decay on this snapshot, not as a general conclusion: calibration
+targets are limited and private scores are only a reference.
 
-- **Dataset audit tooling** for local files plus Hugging Face access-state checks (no gate bypass attempts).
-- **Normalized schema** with source provenance and observability flags.
-- **Synthetic controlled trace generator** with known ground-truth dependencies and negative controls.
-- **Candidate retrieval** (semantic + temporal + artifact overlap + same-agent history).
-- **Rule-based support estimator** with evidence categories, abstention, and alternative explanations.
-- **Graph construction + aggregation** for event and agent-level outputs.
-- **CLI pipeline** to run synthetic end-to-end and export JSON artifacts.
+The event-level mention proxy resolves 234 of 242 target/mentioned-agent pairs;
+8 mentions have no earlier cohort event. Of 990 holdout targets, 205 (20.7%)
+have at least one proxy link. Event-level F1 is 0.105 and AP is 0.071 across
+693,766 eligible earlier-event/target pairs; 105 of 234 reference links had a
+TIDE candidate score. This proxy is based on the closest prior event by a
+mentioned agent, not a verified information source.
+
+| Generated figure (local, not committed) | Contents |
+|---|---|
+| `communities.png` / `.pdf` | Four agent networks in one shared 2x2 layout; community colors are maximum-overlap aligned. |
+| `community-overlap.png` / `.pdf` | Three community membership contingency heatmaps. |
+| `precision_recall.png` / `.pdf` | Both public variants against both references, with AP and prevalence baselines. |
+
+Recreate the current analysis with `evaluate-networks`; use a new empty output
+directory. Exact snapshot hashes, event-level metrics, threshold sweeps, and
+community stability are emitted in `metrics.json` in that output directory.
+Longer-term research directions are collected at the end under
+[Future roadmap](#future-roadmap).
 
 ## Quickstart
 
 ```bash
-python -m tide.cli run-synthetic --output-dir outputs/synth --seed 7
-python -m tide.cli audit-dataset --dataset-dir data
+uv run python -m tide.cli run-synthetic --output-dir outputs/synth --seed 7
+uv run python -m unittest discover -s tests -p "test_*.py"
 ```
 
-Outputs include:
+The synthetic command writes a reproducible offline example, including:
 
 - `events.jsonl`
 - `ground_truth_edges.jsonl`
@@ -275,7 +305,14 @@ Key held-out takeaway:
 - Raising threshold to 0.7 reduces independent FPR substantially, but loses broker sensitivity.
 - No single current profile dominates across all objectives; this remains an open trade-off.
 
-## 1. Research question
+## Research vision and design reference
+
+The following sections preserve the project's original research framing. They
+describe hypotheses and possible methods; they are not claims that those
+experiments or metrics are implemented. The current implementation and
+observed results are described above and in the operational sections below.
+
+### Research question
 
 **Can we infer the probabilistic dependency structure between events in a multi-agent system from timestamped agent activity traces, and use it to identify cross-agent information flow and functional collective behaviour when private chain-of-thought is unavailable and some observations are hidden?**
 
@@ -285,35 +322,35 @@ For each event, we record the agent, timestamp, goal/context, state where observ
 
 The main output is a **probabilistic event-dependency graph**. An agent-level network is derived by aggregating event dependencies over time.
 
-## 2. Hypotheses
+### Hypotheses
 
-### H1 — Recoverable event dependencies
+#### H1 — Recoverable event dependencies
 
 A hybrid retrieval method combining semantic similarity, temporal information and resource/artifact relationships can retrieve supporting predecessor events more effectively than semantic similarity or temporal proximity alone.
 
-### H2 — Cross-agent dependencies beyond individual history
+#### H2 — Cross-agent dependencies beyond individual history
 
 For some episodes, the history of other agents provides predictive information about an agent's subsequent actions beyond that agent's own history and observable shared task/environment context.
 
-### H3 — Observable information provenance supports network reconstruction
+#### H3 — Observable information provenance supports network reconstruction
 
 Combining event-level support estimation with explicit resource and communication evidence can recover meaningful information-flow paths, including multi-hop paths through intermediate agents.
 
-### H4 — The method can distinguish common-cause similarity from cross-agent dependency
+#### H4 — The method can distinguish common-cause similarity from cross-agent dependency
 
 When agents receive identical tasks but act independently, or respond to the same external event without communicating, the method should assign substantially weaker cross-agent support than in controlled information-transfer conditions.
 
-### H5 — Partial observability reduces but need not eliminate recoverability
+#### H5 — Partial observability reduces but need not eliminate recoverability
 
 Hiding message content, agent outputs, selected agents or selected events will reduce reconstruction quality. The rate and pattern of degradation can reveal which observable signals are most useful.
 
-### Exploratory hypothesis — Brokers and aggregators
+#### Exploratory hypothesis — Brokers and aggregators
 
 Agents that receive information from several sources and subsequently relay, transform or combine it may be identifiable from time-respecting event paths and support relationships.
 
 These hypotheses are provisional. The initial prototype should prioritise H1 and H4, then investigate H2/H3 if the trace quality permits.
 
-## 3. What TIDE measures (and what it does not)
+### What TIDE measures (and what it does not)
 
 The project separates four related concepts:
 
@@ -326,7 +363,7 @@ The project separates four related concepts:
 
 These should not be collapsed into a single unqualified “collaboration probability”. Similarity is not influence; temporal correlation is not communication; predictive dependence is not automatically causation; information transfer is not necessarily cooperation. An agent can mislead or obstruct another agent. The initial project therefore uses the cautious phrase **functional cross-agent coordination** rather than inferring intent.
 
-## 4. Event representation
+### Event representation
 
 Each observable event is represented with fields such as:
 
@@ -353,9 +390,9 @@ The result of an action must be distinguished from the information available bef
 
 Missing values must remain missing. TIDE must not invent unobserved goals, states, recipients, tool results or artifact links. The source records remain immutable; inferred predecessor relationships are stored separately.
 
-## 5. Method
+### Method
 
-### 5.1 Candidate predecessor retrieval
+#### Candidate predecessor retrieval
 
 For each target event `e_k`, retrieve a bounded set of earlier events `C_k` with `timestamp(e_j) < timestamp(e_k)`. Retrieval is restricted to the same episode unless an explicit cross-episode relationship is justified.
 
@@ -375,7 +412,7 @@ R(e_j,e_k)=\alpha s_{\mathrm{semantic}}+\beta s_{\mathrm{temporal}}+\gamma s_{\m
 
 This is a **retrieval score**, not a probability of influence. The initial candidate set should contain roughly 5–10 cross-agent events and 2–3 same-agent events, configurable by experiment. Query rewriting is a possible later ablation, not an MVP requirement.
 
-### 5.2 Event-support estimation
+#### Event-support estimation
 
 For every candidate predecessor, estimate:
 
@@ -397,7 +434,7 @@ Possible support categories:
 
 Multiple earlier events may support one event. Candidate probabilities therefore do not need to sum to one. The method must permit abstention and provide concrete evidence for each inferred edge. A raw LLM-judge score must not be called a calibrated probability until assessed against labelled examples (e.g. Brier score and calibration curves).
 
-### 5.3 Event graph
+#### Event graph
 
 Construct a directed graph whose nodes are events and whose edges run from an earlier supporting event to a later supported event:
 
@@ -407,7 +444,7 @@ G_E=(E,\mathcal{A}),\qquad e_j\rightarrow e_k\text{ if }t_j<t_k.
 
 Edges should record support score/probability, support type, time lag, retrieval score, evidence, alternative explanations, and source references. Preserve direct edges and multi-hop paths separately.
 
-### 5.4 Agent-level dynamic network
+#### Agent-level dynamic network
 
 Aggregate event dependencies into a time-varying directed matrix. Use the convention:
 
@@ -419,7 +456,7 @@ This convention means the source-to-recipient edge is `j → i`. The matrix need
 
 Aggregation can use counts, sums, mean support per target event, unique predecessor counts or time-decayed sums. Report raw and normalized versions separately where useful.
 
-### 5.5 Directed predictive dependence
+#### Directed predictive dependence
 
 As an optional statistical measure, estimate whether agent A's past improves prediction of agent B's next action after conditioning on B's own history and observable common context:
 
@@ -432,7 +469,7 @@ where \(Z\) may include common task instructions, shared goals, public feedback 
 
 A positive value indicates residual predictive dependence under the chosen conditioning set; it does not establish direct communication or causal influence when important common causes are unobserved.
 
-### 5.6 TDMI and partial information decomposition
+#### TDMI and partial information decomposition
 
 Riedl (2026) provides a complementary measure of higher-order temporal coordination. For two agents, let current states be \(X_{i,t},X_{j,t}\), and their joint future state be \(T_{ij,t+\ell}=(X_{i,t+\ell},X_{j,t+\ell})\). A two-source PID decomposes:
 
@@ -461,37 +498,37 @@ G_3=I((X_i,X_j,X_k)_t;V_{t+\ell})
 
 These statistics require a meaningful representation of synchronized agent states and a group-level target. The raw logs are asynchronous and high-dimensional, so PID should be treated as an optional extension using carefully defined time bins and low-dimensional/discretized features. It should not be forced into the MVP.
 
-## 6. Key scientific challenge: independent agents with the same task
+### Key scientific challenge: independent agents with the same task
 
 Two agents can perform almost identical action sequences without communicating. Shared goals, prompts, tools and environmental events are common causes of behavioural similarity.
 
 TIDE must include explicit controls:
 
-### Negative control 1 — identical task, independent execution
+#### Negative control 1 — identical task, independent execution
 
 Give two or more agents the same model, prompt, task, tools and environment, but isolate them from one another. They may independently search for the same file, read the same content and produce similar outputs. The detector should not label this as strong cross-agent information transfer simply because the actions are similar.
 
-### Negative control 2 — shared external event
+#### Negative control 2 — shared external event
 
 Agents do not communicate, but both react to the same external event or public environment change. The detector should condition on the observed common event/context and avoid inventing a direct agent-to-agent edge.
 
-### Positive control 1 — explicit information transfer
+#### Positive control 1 — explicit information transfer
 
 Agent A discovers a fact and sends it to B. The full-log condition contains the message; the message-blind condition hides its content from the detector.
 
-### Positive control 2 — shared resource channel
+#### Positive control 2 — shared resource channel
 
 Agent A writes a fact to a shared file/database; B reads and uses it. No explicit message is necessary.
 
-### Positive control 3 — broker/aggregator
+#### Positive control 3 — broker/aggregator
 
 Agents A and B provide complementary facts to C. C combines them and produces a downstream result. Test whether C is identified as an aggregator or intermediary.
 
 Additional conditions can include irrelevant messages, misleading information, two-hop relays, hidden agents and missing events.
 
-## 7. Datasets
+### Candidate datasets
 
-### 7.1 AI Village — primary candidate
+#### AI Village
 
 Dataset: [AI Village on Hugging Face](https://huggingface.co/datasets/aidigestorg/ai-village)
 
@@ -509,17 +546,17 @@ These figures are approximate and should be rechecked at the point of access. Th
 
 **Access and use restrictions:** access is manually gated. The current research terms permit research/analysis but prohibit training or fine-tuning AI systems on the data without written permission. They also prohibit re-identification and require citation of AI Digest / AI Village and notification of resulting publications. Do not bypass the gate and do not train on this data without permission. Daily summaries are documented as secondary and potentially inaccurate because they do not inspect the computer-use sessions.
 
-### 7.2 Synthetic controlled traces
+#### Synthetic controlled traces
 
 A small synthetic generator is essential because real communication logs are weak ground truth: a message being sent does not mean it was read or used. Synthetic traces allow known support edges, independent agents and common causes to be specified exactly.
 
 If AI Village access is not available in time, develop and evaluate the pipeline on synthetic traces, and state clearly that real-world validation remains future work.
 
-### 7.3 Swarm Traces — possible follow-up
+#### Swarm Traces
 
 [Swarm Traces](https://swarmtraces.org/) is relevant to the Hugging Face incident, but it should only be used for quantitative event-graph evaluation if the available records contain reliable timestamps, actor/agent attribution and defensible event linkage. Reconstructed payload relationships are not automatically proof of temporal or causal edges. If metadata is inadequate, use it only as a qualitative forensic case study.
 
-## 8. Experiments and ablations
+### Proposed experiments and ablations
 
 The experiment suite progressively removes information from the detector.
 
@@ -549,40 +586,40 @@ Support-estimator ablations:
 2. pairwise LLM judge on retrieved candidates;
 3. hybrid rules + LLM judge.
 
-## 9. Measures and evaluation
+### Proposed measures and evaluation
 
-### Candidate retrieval
+#### Candidate retrieval
 
 - Recall@K for labelled supporting predecessor events;
 - MRR where one principal predecessor is known;
 - retrieval latency and candidate-set size.
 
-### Event-support inference
+#### Event-support inference
 
 - precision, recall, F1 and AUPRC for known support edges;
 - Brier score and calibration/reliability plots if probabilities are reported;
 - abstention coverage and selective accuracy;
 - breakdown by direct-message, resource-mediated, information-content, same-agent, ambiguous and no-support cases.
 
-### Network reconstruction
+#### Network reconstruction
 
 - event-edge precision/recall/AUPRC against synthetic ground truth;
 - direction and time-respecting path recovery;
 - agent-edge recovery after aggregation;
 - centrality/community analysis only as secondary descriptive analysis.
 
-### Predictive dependence and collective structure
+#### Predictive dependence and collective structure
 
 - conditional transfer entropy or held-out predictive log-likelihood improvement;
 - TDMI/PID synergy and optionally triplet `G3` if the time series is sufficiently long and low-dimensional;
 - false-positive rate in identical-task independent agents and shared-external-event controls;
 - sensitivity to window length, lag, discretization and missingness.
 
-### Broker/aggregator roles
+#### Broker/aggregator roles
 
 Look for agents that receive information from multiple sources and subsequently pass on or combine that information. Time-respecting betweenness may be a useful structural feature, but high degree or betweenness alone is not sufficient to label an information broker.
 
-## 10. Limitations and interpretation
+### General limitations
 
 - Observational traces cannot always distinguish direct influence from unobserved common causes.
 - A message being sent does not establish that it was read or used.
@@ -595,9 +632,9 @@ Look for agents that receive information from multiple sources and subsequently 
 - AI Village's current terms restrict model training/fine-tuning without written permission.
 - The system can only infer information dependencies that leave observable consequences; it cannot reliably detect a covert channel that leaves no detectable trace.
 
-## 11. Weekend scope and milestones
+### Original MVP milestones (historical)
 
-### Minimum viable result
+#### Minimum viable result
 
 1. Audit the repository and dataset access/schema.
 2. Normalize a small subset of real traces if access is granted; otherwise use synthetic traces.
@@ -609,7 +646,7 @@ Look for agents that receive information from multiple sources and subsequently 
 8. Run one useful ablation (full observable vs message-blind or result-hidden).
 9. Produce at least one interpretable visualization and a concise report.
 
-### Stretch goals
+#### Stretch goals
 
 - Conditional transfer entropy or held-out predictive comparison;
 - TDMI/PID on compact synchronized states;
@@ -619,7 +656,7 @@ Look for agents that receive information from multiple sources and subsequently 
 
 Do not attempt to process every row in AI Village, train a GNN, or estimate high-order PID over raw text during the weekend.
 
-## 12. Reproducibility and implementation notes
+### Reproducibility principles
 
 - Use stable event IDs, deterministic seeds and explicit configs.
 - Stream large JSONL.GZ files; do not load all turns into memory unnecessarily.
@@ -630,7 +667,7 @@ Do not attempt to process every row in AI Village, train a GNN, or estimate high
 - Keep ingestion, normalization, retrieval, support scoring, graph construction and evaluation as separate modules.
 - Add tests for temporal filtering, multiple predecessors, missing fields, artifact matching, stable IDs and common-cause controls.
 
-## 13. Initial references
+### Research references
 
 - Riedl, C. (2026). [Emergent Coordination in Multi-Agent Language Models](https://arxiv.org/abs/2510.05174). ICLR 2026. See also the [official implementation](https://github.com/riedlc/AI-GBS). The paper uses TDMI/PID to measure higher-order temporal synergy and includes surrogate null tests; it is complementary to TIDE's directed event-support graph.
 - AI Digest. [AI Village dataset](https://huggingface.co/datasets/aidigestorg/ai-village). Dataset includes event timelines, chat, computer-use sessions/turns, memories and goals. Check the current dataset card, schema, changelog and research terms before use.
@@ -832,5 +869,36 @@ eligible-target pairs and assigns zero to unscored TIDE pairs. This is a
 mention-based predecessor proxy, not a verified information-source label;
 absent mentions are not verified negatives. The report compares it directly
 with the agent-level mention metrics to show how aggregation changes overlap.
+
+## Future roadmap
+
+The following steps are proposed continuation work, not completed features.
+
+1. **Finish and freeze the current comparison.** Resolve remaining Pass 2
+	failures where practical, then save immutable public/private checkpoint
+	snapshots and rerun calibration and evaluation from those exact snapshots.
+	Keep the training/holdout split chronological and report coverage.
+2. **Validate scores against reviewed evidence.** Sample event pairs across
+	score ranges, including TIDE-only and reference-only cases. Have reviewers
+	judge whether the earlier event plausibly contributed, separately recording
+	direct evidence, contextual relevance, and insufficient evidence. Use these
+	labels to assess calibration and score thresholds rather than treating
+	private model scores or mentions as ground truth.
+3. **Improve reference quality and comparability.** Audit whether explicit
+	mentions identify an addressee, a cited agent, or an information source.
+	Compare private and public inference on a common candidate set as well as
+	under their current retrieval policies. Audit event-level predecessor
+	proxies against actual message or artifact chains where observable.
+4. **Stress-test common-cause errors.** Extend synthetic controls for identical
+	tasks and shared external events, then measure how errors change under
+	message-blind, result-hidden, and partial-observability conditions.
+5. **Add higher-level network analyses only after edge validation.** Explore
+	time-respecting paths and broker roles first; consider conditional transfer
+	entropy or TDMI/PID only when a defensible, low-dimensional temporal state
+	representation is available.
+
+Throughout, keep dependency, communication, prediction, and causation claims
+separate. Any use of private traces or publication of examples must continue to
+follow the dataset's access, privacy, and research terms.
 
 
