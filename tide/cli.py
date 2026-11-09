@@ -168,9 +168,34 @@ def _cmd_analyze_graphs(args: argparse.Namespace) -> int:
         args.dataset_dir, args.pass1_dir, args.pass2_dir, args.output_dir,
         similarity_threshold=args.similarity_threshold, dependency_threshold=args.dependency_threshold,
         seed=args.seed, cohort_retrieval=args.cohort_retrieval, cohort_limit=args.cohort_limit,
-        min_direct_references=args.min_direct_references,
+        min_direct_references=args.min_direct_references, calibration_dir=args.calibration_dir,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_calibrate_decay(args: argparse.Namespace) -> int:
+    from tide.calibration import run_calibration
+
+    result = run_calibration(
+        args.dataset_dir, args.public_dir, args.private_dir, args.output_dir,
+        train_targets=args.train_targets, cohort_limit=args.cohort_limit,
+        lambda_max=args.lambda_max, grid_steps=args.grid_steps, threshold=args.threshold, model=args.model,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_evaluate_networks(args: argparse.Namespace) -> int:
+    from tide.network_evaluation import run_network_evaluation
+
+    result = run_network_evaluation(
+        args.dataset_dir, args.registry, args.public_dir, args.private_dir, args.calibration_dir,
+        args.output_dir, threshold=args.threshold, private_threshold=args.private_threshold,
+    )
+    print(json.dumps({"scope": result["scope"], "structures": result["structures"],
+                    "comparisons": {name: item["variants"]
+                                      for name, item in result["comparisons"].items()}}, indent=2))
     return 0
 
 
@@ -364,7 +389,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_analysis.add_argument("--cohort-retrieval", default=None, help="Retrieval JSONL defining a common target cohort")
     p_analysis.add_argument("--cohort-limit", type=int, default=None, help="First N chronological targets in the cohort retrieval cache")
     p_analysis.add_argument("--min-direct-references", type=int, default=1, help="Minimum direct Pass 1 references per ordered agent pair")
+    p_analysis.add_argument("--calibration-dir", default=None, help="Optional public calibration output directory")
     p_analysis.set_defaults(func=_cmd_analyze_graphs)
+
+    p_calibration = sub.add_parser("calibrate-decay", help="Fit public temporal decay against private Pass 2 scores")
+    p_calibration.add_argument("--dataset-dir", required=True, help="Processed dataset directory")
+    p_calibration.add_argument("--public-dir", required=True, help="Public Pass 2 output directory")
+    p_calibration.add_argument("--private-dir", required=True, help="Private Pass 2 output directory")
+    p_calibration.add_argument("--output-dir", required=True, help="Empty directory for calibration results")
+    p_calibration.add_argument("--train-targets", type=int, default=200, help="Number of first chronological targets used for fitting")
+    p_calibration.add_argument("--cohort-limit", type=int, default=1200, help="Number of chronological public retrieval targets")
+    p_calibration.add_argument("--lambda-max", type=float, default=5.0, help="Maximum decay rate per hour for both fits")
+    p_calibration.add_argument("--grid-steps", type=int, default=1000, help="Number of intervals in the decay-only grid")
+    p_calibration.add_argument("--threshold", type=float, default=0.5, help="Score threshold for matched-pair graph metrics")
+    p_calibration.add_argument("--model", choices=("sigmoid-decay", "decay-only"), default="sigmoid-decay", help="Calibration model")
+    p_calibration.set_defaults(func=_cmd_calibrate_decay)
+
+    p_evaluation = sub.add_parser("evaluate-networks", help="Compare explicit, private and public agent networks")
+    p_evaluation.add_argument("--dataset-dir", required=True, help="Processed event dataset")
+    p_evaluation.add_argument("--registry", required=True, help="Full registered-agent JSONL")
+    p_evaluation.add_argument("--public-dir", required=True, help="Public Pass 2 directory")
+    p_evaluation.add_argument("--private-dir", required=True, help="Private Pass 2 directory")
+    p_evaluation.add_argument("--calibration-dir", required=True, help="Calibrated public scores directory")
+    p_evaluation.add_argument("--output-dir", required=True, help="Empty output directory")
+    p_evaluation.add_argument("--threshold", type=float, default=0.5, help="Public event score threshold")
+    p_evaluation.add_argument("--private-threshold", type=float, default=0.5, help="Private event score threshold")
+    p_evaluation.set_defaults(func=_cmd_evaluate_networks)
 
     p_ext = sub.add_parser("run-extended-validation", help="Run extended synthetic benchmark and write report")
     p_ext.add_argument("--output-dir", default="outputs/extended_validation", help="Output directory for machine-readable results")

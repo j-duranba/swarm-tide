@@ -710,4 +710,112 @@ The seed is configurable with `--seed`, but results can vary across igraph
 versions. Reference links, similarity, and model-scored dependencies are not
 proof of causation or communication.
 
+### Private score spot check
+
+A qualitative review of eight private rerank examples near 0.25, 0.50, 0.75,
+and 0.90 found plausible high-score examples alongside a possible false positive
+involving two different sets of 13 checks and indirect interactions described
+as direct. The examples were selected purposively and cannot establish score
+accuracy. See the
+[private Pass 2 qualitative report](reports/private_pass2_qualitative_examples.md)
+and review private-data handling restrictions before sharing it.
+
+## Public temporal decay calibration
+
+Fit the public rerank scores against private rerank scores for matching
+source-target event pairs, then evaluate on later targets:
+
+```powershell
+uv run python -m tide.cli calibrate-decay --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --public-dir outputs/pass2-public --private-dir outputs/pass2-deepseek --output-dir outputs/public-decay-calibration-200
+```
+
+The output directory must be empty and separate from the inputs. The command
+snapshots checkpoints without modifying them, verifies input fingerprints, and
+selects the first 1,200 chronological public retrieval targets. The first 200
+targets are the training split and the remaining 1,000 are holdout; both
+endpoints of each pair must be inside the cohort. Missing targets and pairs
+not scored by both runs are excluded from fitting and comparison, not given
+zero scores. Coverage and candidate-filter differences are reported separately.
+Public-only and private-only pair counts are measured only for targets that
+completed in both runs.
+
+By default, the calibrated score is
+`sigmoid(alpha * public_score + intercept) * exp(-lambda * hours)`. A bounded
+SciPy least-squares optimizer minimizes pair-weighted training MSE against the
+private score from four deterministic starting points. Alpha and intercept
+are bounded to [-30, 30], and lambda to [0, 5] per hour by default; results
+include optimizer convergence and active bounds. Multi-start optimization does
+not guarantee a global optimum. Sigmoid calibration can assign a positive score
+even when the original public score is zero.
+
+As an ablation, the same run also fits a ranking-only sigmoid,
+`sigmoid(alpha_rank * public_score + intercept_rank)`, with no elapsed-time
+term. Both use the same matched training pairs and holdout pairs. Metrics report
+raw scores, sigmoid-only ranking calibration, and sigmoid-plus-decay on both
+splits; the exported public edge file contains both calibrated variants. The
+network evaluation compares both public graphs against each reference at the
+same threshold and reports both PR/AP results.
+
+For comparison, a deterministic grid separately fits the simpler decay-only
+score `public_score * exp(-lambda * hours)`. Defaults search 0 through 5 per
+hour in 1,000 intervals; `--lambda-max` changes both models' upper lambda
+bound, while `--grid-steps` changes the decay-only grid. The result flags an
+upper-bound grid solution. `--model decay-only` exports the simpler model as
+the calibrated score. `--train-targets` and `--cohort-limit` change the split.
+
+`calibration.json` records snapshot hashes, coverage, each fit and raw,
+ranking-only, decay-only and sigmoid-plus-decay MSE and MAE for both splits. It
+also reports precision and recall at the fixed
+`--threshold` (default 0.5), using private scores as labels **only on matched
+pairs**. `matched_pairs.jsonl` contains the comparison scores and split;
+`public_decayed_edges.jsonl` contains every completed public scored pair
+within the cohort, with original, decay-only, ranking-only and sigmoid-plus-decay scores, before
+thresholding. To produce a weighted graph from the calibrated scores, add
+`--calibration-dir outputs/public-sigmoid-decay-calibration-200` to the public
+`analyze-graphs` command together with the same cohort arguments used for
+calibration. The graph uses `calibrated_public_score` and the inclusive
+`--dependency-threshold`; it is written separately as `pass2_calibrated`.
+The command requires the calibration cohort and public checkpoint snapshot to
+match the analysis inputs, and checks that every public pair is present once.
+The private checkpoint may be incomplete while running: use a new output directory
+to recalibrate after it advances. These metrics measure agreement with private
+scores, not accuracy against ground truth, and matched pairs can be biased by
+the different candidate filters and missing targets.
+
+## Compact agent-network evaluation
+
+Compare direct raw-chat mentions, private-context inference, and calibrated
+public TIDE on jointly completed held-out targets:
+
+```powershell
+uv run python -m tide.cli evaluate-networks --dataset-dir data/processed/ai-village/main-village/2026-10-24_to_2026-10-31/v2 --registry data/ai-village-extracted/main-village/agents.jsonl --public-dir outputs/pass2-public --private-dir outputs/pass2-deepseek --calibration-dir outputs/public-sigmoid-decay-calibration-200 --output-dir outputs/network-evaluation-authors-holdout
+```
+
+The node universe contains only registered authors of events in the full
+calibration cohort; mentions of registered nonauthors are excluded. All three
+networks use this same universe and exclude self-links. Raw chat @mentions are
+directed from the message author to the mentioned agent and need not express
+information flow. Private and public inferred event links point from source to
+target and are aggregated by maximum score per agent pair. The public score
+uses the fitted sigmoid and time decay; private scores have no separately fitted
+temporal adjustment. Thresholds default to 0.5 and can be changed with
+`--threshold` and `--private-threshold`; direct mentions require one mention.
+
+The command emits `metrics.json`, `report.md`, and precision-recall and
+community figures in PNG and PDF. The community figure has four panels:
+explicit mentions, private inference, sigmoid-plus-decay public, and
+sigmoid-only public. It uses one shared layout, aligns community colors by
+maximum-overlap Hungarian matching, and includes contingency matrices so
+alignment is not mistaken for equivalence. The PR figure compares both public
+variants against each reference using sklearn average precision and shows
+reference-prevalence baselines. The report also includes per-event connection
+counts. The threshold sweep compares against each
+reference separately. Average precision ranks all non-self author pairs,
+assigning zero to unscored public pairs; reference absence is not a verified
+negative. Leiden uses a weighted undirected projection, retaining isolates, and
+the output reports active-only partition comparisons and seed sensitivity.
+Only targets completed in both checkpoints are evaluated, and calibration
+targets are excluded; candidate-filter differences and incompleteness remain
+important limitations.
+
 

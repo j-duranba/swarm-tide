@@ -93,6 +93,25 @@ def induced_event_edges(edges: list[dict[str, Any]], event_ids: set[str]) -> lis
     return [edge for edge in edges if edge["source_event_id"] in event_ids and edge["target_event_id"] in event_ids]
 
 
+def calibrated_event_edges(rows: list[dict[str, Any]], expected_pairs: dict[tuple[str, str], float],
+                           threshold: float) -> list[dict[str, Any]]:
+    edges = []
+    seen = set()
+    for row in rows:
+        pair = (row["source_event_id"], row["target_event_id"])
+        if pair not in expected_pairs or pair in seen or row.get("public_score") != expected_pairs[pair]:
+            raise ValueError(f"Calibrated pair does not match public reranking: {pair}")
+        seen.add(pair)
+        score = row.get("calibrated_public_score")
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError(f"Invalid calibrated score for {pair}")
+        if score >= threshold:
+            edges.append({"source_event_id": pair[0], "target_event_id": pair[1], "weight": float(score)})
+    if seen != set(expected_pairs):
+        raise ValueError("Calibrated scores do not cover every public reranked pair in the cohort")
+    return edges
+
+
 def direct_reference_graph(events: list[dict[str, Any]], agents: dict[str, dict[str, Any]],
                            names_to_ids: dict[str, str], min_references: int = 1) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     if min_references < 1:
@@ -220,7 +239,8 @@ def graph_statistics(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], *
 def run_graph_analysis(dataset_dir: str | Path, pass1_dir: str | Path, pass2_dir: str | Path,
                        output_dir: str | Path, *, similarity_threshold: float, dependency_threshold: float,
                        seed: int = 0, cohort_retrieval: str | Path | None = None,
-                       cohort_limit: int | None = None, min_direct_references: int = 1) -> dict[str, Any]:
+                       cohort_limit: int | None = None, min_direct_references: int = 1,
+                       calibration_dir: str | Path | None = None) -> dict[str, Any]:
     if not math.isfinite(similarity_threshold) or not -1 <= similarity_threshold <= 1:
         raise ValueError("similarity threshold must be between -1 and 1")
     if not math.isfinite(dependency_threshold) or not 0 <= dependency_threshold <= 1:
@@ -302,6 +322,30 @@ def run_graph_analysis(dataset_dir: str | Path, pass1_dir: str | Path, pass2_dir
         "pass2_retrieval_matched": (pass2_edges(matched_retrieval, "similarity_score", similarity_threshold, all_event_ids), False),
         "pass2_reranked": (pass2_edges(reranked, "dependency_score", dependency_threshold, all_event_ids), True),
     }
+    calibration_info = None
+    if calibration_dir is not None:
+        calibration = Path(calibration_dir).resolve()
+        if output == calibration or calibration in output.parents:
+            raise ValueError("Analysis output must be outside the calibration directory")
+        if retrieval_config.get("context_mode", "private") != "public":
+            raise ValueError("Calibrated public scores require public Pass 2 inputs")
+        calibration_path = calibration / "calibration.json"
+        calibration_edges_path = calibration / "public_decayed_edges.jsonl"
+        calibration_info = json.loads(calibration_path.read_text(encoding="utf-8"))
+        hashes = calibration_info["input_hashes"]
+        for field in ("events_sha256", "agents_sha256", "pass1_sha256"):
+            if hashes.get(field) != retrieval_config.get(field):
+                raise ValueError(f"Calibration does not match {field}")
+        if hashes.get("public_retrieval_sha256") != retrieval_snapshot_sha256 or hashes.get("public_rerank_snapshot_sha256") != rerank_snapshot_sha256:
+            raise ValueError("Calibration does not match the public retrieval or rerank snapshot")
+        cohort_hash = hashlib.sha256("\n".join(sorted(event_ids)).encode("utf-8")).hexdigest()
+        if calibration_info.get("cohort", {}).get("event_ids_sha256") != cohort_hash:
+            raise ValueError("Calibration cohort does not match analysis cohort")
+        all_scored = induced_event_edges(pass2_edges(reranked, "dependency_score", 0, all_event_ids), event_ids)
+        expected_pairs = {(edge["source_event_id"], edge["target_event_id"]): edge["weight"] for edge in all_scored}
+        with calibration_edges_path.open(encoding="utf-8") as source:
+            calibrated_rows = [json.loads(line) for line in source if line.strip()]
+        full_graphs["pass2_calibrated"] = (calibrated_event_edges(calibrated_rows, expected_pairs, dependency_threshold), True)
     graphs = {name: (induced_event_edges(edges, event_ids), weighted) for name, (edges, weighted) in full_graphs.items()}
     direct_nodes, direct_edges, direct_counts = direct_reference_graph(events, agents, names_to_ids, min_direct_references)
     output.mkdir(parents=True, exist_ok=True)
@@ -327,6 +371,11 @@ def run_graph_analysis(dataset_dir: str | Path, pass1_dir: str | Path, pass2_dir
         "unreranked_targets": len(event_ids - reranked_ids), "pass1_references": reference_counts,
         "graphs": {},
     }
+    if calibration_info is not None:
+        summary["calibration"] = {"model": calibration_info["model"], "fit": calibration_info["fit"],
+                                  "training_targets": calibration_info["cohort"]["training_targets"],
+                                  "metadata_sha256": file_sha256(calibration_path),
+                                  "scores_sha256": file_sha256(calibration_edges_path)}
     for name, (edges, weighted) in graphs.items():
         agent_nodes, agent_edges, omitted = aggregate_agents(events, edges)
         event_stats = graph_statistics(event_nodes, edges, level="event", weighted=weighted, seed=seed)

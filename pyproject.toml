@@ -15,6 +15,8 @@ dependencies = [
     "adaption>=0.19.0",
     "tqdm>=4.66",
     "igraph>=0.11,<2",
+    "scipy>=1.10,<2",
+    "scikit-learn>=1.4,<2",
 ]
 
 [project.optional-dependencies]

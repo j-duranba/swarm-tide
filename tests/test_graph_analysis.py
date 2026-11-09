@@ -1,10 +1,11 @@
+import hashlib
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from tide.graph_analysis import aggregate_agents, direct_reference_graph, graph_statistics, induced_event_edges, pass1_edges, pass2_edges, read_snapshot, run_graph_analysis
+from tide.graph_analysis import aggregate_agents, calibrated_event_edges, direct_reference_graph, graph_statistics, induced_event_edges, pass1_edges, pass2_edges, read_snapshot, run_graph_analysis
 from tide.pass2 import file_sha256
 
 
@@ -42,6 +43,20 @@ class GraphAnalysisTests(unittest.TestCase):
             {"source_event_id": "inside", "target_event_id": "outside"},
         ]
         self.assertEqual(induced_event_edges(edges, {"inside", "also-inside"}), edges[:1])
+
+    def test_calibrated_edges_validate_pairs_and_use_calibrated_threshold(self):
+        expected = {("a", "b"): 0.9, ("a", "c"): 0.2}
+        rows = [
+            {"source_event_id": "a", "target_event_id": "b", "public_score": 0.9, "calibrated_public_score": 0.4},
+            {"source_event_id": "a", "target_event_id": "c", "public_score": 0.2, "calibrated_public_score": 0.5},
+        ]
+        self.assertEqual(calibrated_event_edges(rows, expected, 0.5), [
+            {"source_event_id": "a", "target_event_id": "c", "weight": 0.5},
+        ])
+        with self.assertRaises(ValueError):
+            calibrated_event_edges(rows[:1], expected, 0.5)
+        with self.assertRaises(ValueError):
+            calibrated_event_edges(rows + rows[:1], expected, 0.5)
 
     def test_direct_reference_graph_counts_direction_and_references_to_nonauthors(self):
         agents = {"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}}
@@ -159,3 +174,22 @@ class GraphAnalysisTests(unittest.TestCase):
                 self.assertEqual(cohort_summary["pass1_references"]["no_matching_event"], 0)
                 self.assertEqual(cohort_summary["graphs"]["pass1_direct"]["agent_nodes"], 2)
                 self.assertEqual(cohort_summary["graphs"]["pass1_direct"]["agent_edges"], 1)
+                if mode == "public":
+                    calibration = root / "calibration"
+                    calibration.mkdir()
+                    metadata = {"model": "sigmoid-decay", "fit": {"alpha": 1},
+                                "cohort": {"training_targets": 1, "event_ids_sha256": hashlib.sha256(b"source\ntarget").hexdigest()},
+                                "input_hashes": {**config, "public_retrieval_sha256": file_sha256(retrieval_path),
+                                                 "public_rerank_snapshot_sha256": file_sha256(pass2 / "rerank_checkpoint.jsonl")}}
+                    (calibration / "calibration.json").write_text(json.dumps(metadata), encoding="utf-8")
+                    write_rows(calibration / "public_decayed_edges.jsonl", [{"source_event_id": "source", "target_event_id": "target",
+                                                                               "public_score": 0.8, "calibrated_public_score": 0.4}])
+                    calibrated = run_graph_analysis(dataset, pass1, pass2, root / "calibrated", similarity_threshold=0.5,
+                                                    dependency_threshold=0.7, calibration_dir=calibration)
+                    self.assertEqual(calibrated["graphs"]["pass2_reranked"]["event_edges"], 1)
+                    self.assertEqual(calibrated["graphs"]["pass2_calibrated"]["event_edges"], 0)
+                    metadata["cohort"]["event_ids_sha256"] = "wrong"
+                    (calibration / "calibration.json").write_text(json.dumps(metadata), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "cohort"):
+                        run_graph_analysis(dataset, pass1, pass2, root / "wrong-cohort", similarity_threshold=0.5,
+                                           dependency_threshold=0.7, calibration_dir=calibration)
