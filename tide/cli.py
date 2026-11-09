@@ -194,8 +194,9 @@ def _cmd_evaluate_networks(args: argparse.Namespace) -> int:
         args.output_dir, threshold=args.threshold, private_threshold=args.private_threshold,
     )
     print(json.dumps({"scope": result["scope"], "structures": result["structures"],
-                    "comparisons": {name: item["variants"]
-                                      for name, item in result["comparisons"].items()}}, indent=2))
+                      "comparisons": {name: item["variants"]
+                                      for name, item in result["comparisons"].items()},
+                      "event_level_explicit_reference": result["event_level_explicit_reference"]}, indent=2))
     return 0
 
 

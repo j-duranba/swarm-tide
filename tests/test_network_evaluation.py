@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from tide.network_evaluation import aggregate_max_scores, build_community_graph, cohort_agent_ids, compare_edge_sets, community_comparison, precision_recall, reference_mentions, run_network_evaluation
+from tide.network_evaluation import aggregate_max_scores, build_community_graph, build_event_mention_reference, cohort_agent_ids, compare_edge_sets, community_comparison, evaluate_event_links, precision_recall, reference_mentions, run_network_evaluation
 from tide.pass2 import file_sha256
 
 
@@ -48,6 +48,42 @@ class NetworkEvaluationTests(unittest.TestCase):
         agents = {"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}}
         events = [{"author_id": "a"}, {"author_id": "b"}, {"author_id": "a"}, {"author_id": None}, {"author_id": "unknown"}]
         self.assertEqual(cohort_agent_ids(events, agents), ["a", "b"])
+
+    def test_explicit_mention_uses_closest_strict_predecessor_and_reports_coverage(self):
+        from datetime import datetime, timedelta, timezone
+
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        agents = {"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}}
+        events = [
+            {"event_id": "b0", "author_id": "b", "timestamp_dt": base, "source_index": 0},
+            {"event_id": "b1", "author_id": "b", "timestamp_dt": base + timedelta(minutes=2), "source_index": 1},
+            {"event_id": "a1", "author_id": "a", "timestamp_dt": base + timedelta(minutes=2), "source_index": 2,
+             "chat_content": "@B @C @A"},
+            {"event_id": "a2", "author_id": "a", "timestamp_dt": base + timedelta(minutes=3), "source_index": 3,
+             "chat_content": "@B"},
+        ]
+        edges, counts, tokens = build_event_mention_reference(events, agents, {"a1", "a2"})
+        self.assertEqual(edges, {("b0", "a1"), ("b1", "a2")})
+        self.assertEqual(counts["explicit_mention_agent_pairs"], 4)
+        self.assertEqual(counts["distinct_mentioned_agents"], 3)
+        self.assertEqual(counts["mentions_with_eligible_predecessor"], 2)
+        self.assertEqual(counts["mentions_without_eligible_predecessor"], 1)
+        self.assertEqual(counts["self_mentions_excluded"], 1)
+        self.assertEqual(counts["targets_with_at_least_one_reference_link"], 2)
+        self.assertEqual(tokens[("b0", "a1")], ["@B"])
+
+    def test_event_metrics_do_not_count_unresolvable_mentions_as_false_negatives(self):
+        from datetime import datetime, timedelta, timezone
+
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        events = [{"event_id": "s", "timestamp_dt": base},
+                  {"event_id": "t", "timestamp_dt": base + timedelta(hours=1)},
+                  {"event_id": "u", "timestamp_dt": base + timedelta(hours=2)}]
+        reference = {("s", "t")}
+        result = evaluate_event_links(reference, {("s", "t"): 0.8}, events, {"t", "u"}, 0.5)
+        self.assertEqual(result["eligible_event_pairs"], 3)
+        self.assertEqual((result["shared"], result["reference_only"], result["tide_only"]), (1, 0, 0))
+        self.assertFalse(result["unobserved_pairs_are_verified_negatives"])
 
     def test_end_to_end_excludes_nonauthor_mentions_from_all_graphs(self):
         with TemporaryDirectory() as directory:
@@ -95,7 +131,7 @@ class NetworkEvaluationTests(unittest.TestCase):
             rows(calibration / "matched_pairs.jsonl", [])
             rows(calibration / "public_decayed_edges.jsonl", [
                 {"source_event_id": f"e{index - 1}", "target_event_id": f"e{index}",
-                  "public_score": 0.8, "calibrated_public_score": 0.7,
+                 "public_score": 0.8, "calibrated_public_score": 0.7, "sigmoid_decay_public_score": 0.7,
                   "ranking_calibrated_public_score": 0.65} for index in (1, 2)
             ])
             output = root / "evaluation"
@@ -103,10 +139,17 @@ class NetworkEvaluationTests(unittest.TestCase):
             self.assertEqual(result["scope"]["registered_agents"], 2)
             self.assertEqual(result["scope"]["full_registry_agents"], 3)
             self.assertEqual({item["nodes"] for item in result["structures"].values()}, {2})
-            self.assertIn("Public TIDE (sigmoid + decay)", result["structures"])
-            self.assertIn("Public TIDE (sigmoid only)", result["structures"])
+            self.assertIn("Public TIDE", result["structures"])
+            self.assertIn("Public TIDE (no temporal)", result["structures"])
             self.assertEqual(result["structures"]["Explicit mentions"]["edges"], 2)
             self.assertEqual(result["comparisons"]["Private inference"]["variants"]["sigmoid_decay"]["at_threshold"]["shared"], 2)
             self.assertEqual(result["comparisons"]["Private inference"]["variants"]["ranking_only"]["at_threshold"]["shared"], 2)
+            self.assertEqual(result["event_level_explicit_reference"]["reference_counts"]["reference_event_links"], 2)
+            self.assertEqual(result["event_level_explicit_reference"]["reference_counts"]["mentions_without_eligible_predecessor"], 1)
+            self.assertEqual(result["event_level_explicit_reference"]["metrics"]["f1"], 1.0)
+            self.assertEqual(result["event_level_explicit_reference"]["metrics"]["eligible_event_pairs"], 3)
             self.assertTrue(all((output / filename).exists() for filename in
-                                ("metrics.json", "report.md", "precision_recall.png", "precision_recall.pdf", "communities.png", "communities.pdf")))
+                                ("metrics.json", "report.md", "precision_recall.png", "precision_recall.pdf",
+                                 "communities.png", "communities.pdf", "community-overlap.png", "community-overlap.pdf",
+                                 "event_level_explicit_reference.json",
+                                 "event_level_explicit_reference_edges.jsonl", "event_level_tide_event_edges.jsonl")))

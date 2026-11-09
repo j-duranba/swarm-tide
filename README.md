@@ -802,11 +802,12 @@ temporal adjustment. Thresholds default to 0.5 and can be changed with
 `--threshold` and `--private-threshold`; direct mentions require one mention.
 
 The command emits `metrics.json`, `report.md`, and precision-recall and
-community figures in PNG and PDF. The community figure has four panels:
-explicit mentions, private inference, sigmoid-plus-decay public, and
-sigmoid-only public. It uses one shared layout, aligns community colors by
-maximum-overlap Hungarian matching, and includes contingency matrices so
-alignment is not mistaken for equivalence. The PR figure compares both public
+community figures in PNG and PDF. The network figure has four panels:
+explicit mentions, private inference, `Public TIDE`, and
+`Public TIDE (no temporal)`, all on one shared layout with aligned community
+colors. A separate heatmap figure shows community overlap. Community labels
+are aligned by maximum-overlap Hungarian matching, but this is only label
+matching, not evidence of equivalence. The PR figure compares both public
 variants against each reference using sklearn average precision and shows
 reference-prevalence baselines. The report also includes per-event connection
 counts. The threshold sweep compares against each
@@ -817,5 +818,19 @@ the output reports active-only partition comparisons and seed sensitivity.
 Only targets completed in both checkpoints are evaluated, and calibration
 targets are excluded; candidate-filter differences and incompleteness remain
 important limitations.
+
+The evaluation also writes a separate `event_level_explicit_reference.json`
+and `event_level_explicit_reference_edges.jsonl`. For each jointly completed
+holdout target, it extracts unambiguous @mentions from the original
+`AGENT_TALK` `data.content`, then links each non-self mentioned agent's latest
+strictly earlier event in the full 1,200-event cohort to the target. Predecessor
+selection uses time only, independently of TIDE candidates or scores. Mentions
+without an earlier cohort event and self-mentions are counted as coverage or
+exclusions, not false negatives. Event-level metrics use sigmoid-plus-decay
+public scores and the same threshold; AP ranks strictly earlier cohort-event /
+eligible-target pairs and assigns zero to unscored TIDE pairs. This is a
+mention-based predecessor proxy, not a verified information-source label;
+absent mentions are not verified negatives. The report compares it directly
+with the agent-level mention metrics to show how aggregation changes overlap.
 
 
